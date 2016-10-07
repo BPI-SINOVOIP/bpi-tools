@@ -1,6 +1,6 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.3"
+BPICMDVERSION="v1.0.3(github)"
 DEVICE=$2
 
 IMGFILE=$1
@@ -18,7 +18,13 @@ usage()
 list_images()
 {
 	echo BPIFILE=$BPIFILE
-	BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjTXhaTHpLSElGQUk"
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#	BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjTXhaTHpLSElGQUk"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/bpi-files.lst"
 	echo "Wait for download index file ..."
 #	wget -O $BPIFILE $BPIURL
 	curl -s -L $BPIURL > $BPIFILE

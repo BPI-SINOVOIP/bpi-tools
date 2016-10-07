@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.2.2c"
+BPICMDVERSION="v1.2.2c(github)"
 
 BPIMODE=
 NEWBPIMODE=""
@@ -34,7 +34,13 @@ ROOTFILE=
 #
 BPIFILE="$HOME/.${BPICMD}.lst"
 #BPI-ROOT.lst
-BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/BPI-ROOT.lst"
 BPIURLNEW=""
 #
 # update / download

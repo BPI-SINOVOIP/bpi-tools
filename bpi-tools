@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-tools"
-BPICMDVERSION="v1.2.0"
+BPICMDVERSION="v1.2.0(github)"
 BPIOPT="$*"
 
 F_ALL="no"
@@ -16,7 +16,13 @@ F_BOARD="no"
 
 IMGFILE=$1
 BPIFILE="$HOME/.${BPICMD}.lst"
-BPIURL="https://googledrive.com/host/0B6FbwMfcqfFZTUpocHhQbzZJSkk"
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#BPIURL="https://googledrive.com/host/0B6FbwMfcqfFZTUpocHhQbzZJSkk"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/bpi-tools.lst"
 BPIURLNEW=""
 if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
 
