@@ -1,0 +1,1016 @@
+#!/bin/bash
+#GPL
+#set -x
+BPILICENSE="GPLv2 or any later version"
+BPICMD="bpi-migrate"
+BPICMDVERSION="v1.2.2c"
+
+BPIMODE=
+NEWBPIMODE=""
+
+SRC=""
+DST=""
+SIZE=""
+BOOTSIZE=""
+
+IMGFILE=""
+DEVICE=""
+
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+
+TMPFILE=/tmp/.${BPICMD}.tmp.$$
+
+LOOP_DEV="/dev/loop0"
+LOOP_PART_BOOT="${LOOP_DEV}p1"
+LOOP_PART_SYS="${LOOP_DEV}p2"
+
+UBOOTIMGGZ=BPI_M3_720P.img.gz
+BOOTFILE=BPI-BOOT.tgz
+ROOTFILE=
+
+
+#
+# BPIFILE / BPIURL
+#
+BPIFILE="$HOME/.${BPICMD}.lst"
+#BPI-ROOT.lst
+BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+BPIURLNEW=""
+#
+# update / download
+#
+F_UPDATE=NO
+F_DOWNLOAD=NO
+F_GOOGLE=YES
+
+######################################################
+for IN in "$@"
+do
+  if [[ "$IN" == *"="* ]] ; then
+    P=${IN%%=*}
+    V=${IN##*=}
+    echo "INFO: $P=${V:-(empty)}"
+    eval $P=$V
+  fi
+done
+######################################################
+
+usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), migrate a system to bananapi image environment.
+
+Usage: bpi-migrate [OPTIONS]...
+       bpi-migrate [ --help | -v | --version ]
+
+Options:
+
+  -u, --update                    update index files
+  -G, --download                  download files for bpi-migrate
+  -r, --root rootfile             user root file for BPI-ROOT (ex. root.tgz)
+  -b, --boot bootfile             user boot file for BPI-BOOT (ex. boot.tgz)
+  -s, --size                      image size(defaut: 7456 MB for eMMC)
+  -B, --BOOTSIZE                  BPI-BOOT partition size(default: 256 MB)
+  -h, --help                      Print usage
+  -v, --version                   Print version information and quit
+
+ex: (prepare env.)
+  1. mkdir BPI-ROOT ; cd BPI-ROOT
+  2. bpi-migrate -u -G ; #download files for bpi-migrate
+
+ex: (default create BPI-M3 image)
+  0. sudo su
+  1. bpi-migrate -r /pathtouser/root.tgz
+
+ex: (create BPI-M2P image)
+  0. sudo su
+  1. bpi-migrate -r /pathtouser/root.tgz --uboot BPI_M2P_720P.img.gz
+
+ex: (create BPI-R1 image)
+  0. sudo su
+  1. bpi-migrate -r root.tgz --uboot u-boot-2016.05-bpi-r1-legacy.img.gz
+
+for test only:
+  -d, --device device             device
+  -i, --imgfile imgfile           imgfile
+  -S, --src src                   src from
+  -D, --dst dst                   dst to
+
+EOF
+  exit 1
+}
+
+F_INDEX=
+download_index() {
+  if [ "x${F_INDEX}" == "xOK" ] ; then
+    return
+  fi
+  echo BPIFILE=$BPIFILE
+  echo "Wait for download index file ..."
+  curl -s -L $BPIURL > $BPIFILE
+  echo "OK!!\n"
+  F_INDEX=OK
+}
+
+list_files() {
+  echo
+  echo "bpi files:"
+  awk '{ printf "%-12s\t%s\n", $2, $4 }' $BPIFILE
+}
+
+get_all_versions() {
+  echo
+  echo "bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    BPICMDVERSION="old version"
+  if [ -f "${IMGFILE}" ] ; then
+    eval `grep "^BPICMDVERSION" $IMGFILE`
+  else
+    BPICMDVERSION="NOT INSTALLED"
+  fi
+  echo "$IMGFILE	$BPICMDVERSION"
+  done
+}
+
+get_all_files() {
+  echo
+  echo "download bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    echo $IN
+    IMGFILE=$IN
+    get_bpifile
+    chmod 644 $IMGFILE
+  done
+}
+
+upgrade_all_files() {
+  echo
+  echo "upgrade bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    echo $IMGFILE
+    if [ -f "${IN}" ] ; then
+      cp -a ${IN} ${IMGFILE}
+      chown root:root ${IMGFILE}
+      chmod 755 ${IMGFILE}
+    fi
+  done
+}
+
+get_bpifile() {
+  MD5TMP="/tmp/.md5.tmp.$$"
+  #echo "BPIFILE=$BPIFILE"
+  #echo "IMGFILE=$IMGFILE"
+  #echo "MD5TMP=$MD5TMP"
+  LINE=`cat $BPIFILE | grep $IMGFILE`
+  #echo LINE=$LINE
+  set -- $LINE
+  BPIURL=$3
+  if [ ! -z ${BPIURLNEW} ] ; then
+    BPIURL=${BPIURLNEW}/$2
+  fi
+  echo "$1  $2" > $MD5TMP
+  if [ ! -f "${IMGFILE}" ] ; then
+    curl -s -L $BPIURL > $IMGFILE
+  fi
+  md5sum -c $MD5TMP
+  rm -f $MD5TMP
+  file $IMGFILE | grep "shell script" >/dev/null
+  SHELLCMD=$?
+  if [ $SHELLCMD -eq 0 ] ; then
+    eval `grep "^BPICMDVERSION" $IMGFILE`
+    echo "$IMGFILE: $BPICMDVERSION"
+  fi
+}
+
+requires_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo >&1 "ERROR: This command can only be used by root."
+    exit 1
+  fi
+}
+
+upgrade_bpi_files() {
+  requires_root
+  get_all_files
+  upgrade_all_files
+  get_all_versions
+}
+
+bpi_tools_main() {
+  if [ ! -f "${BPIFILE}" ] ; then
+    download_index
+  fi
+  if [ -z ${IMGFILE} ] ; then
+    usage
+    list_files
+    exit 0
+  fi
+  case ${IMGFILE} in
+  all)
+    get_all_files
+    exit 0
+    ;;
+  --all)
+    upgrade_bpi_files
+    exit 0
+    ;;
+  --download)
+    get_all_files
+    exit 0
+    ;;
+  --genfiles)
+    #gen_bpi_files
+    exit 0
+    ;;
+  --upgrade)
+    upgrade_bpi_files
+    exit 0
+    ;;
+  --ver*)
+    get_all_versions
+    exit 0
+    ;;
+  --update)
+    usage
+    download_index
+    list_files
+    exit 0
+    ;;
+  *)
+    echo "INFO: Try to get $IMGFILE ..."
+    get_bpifile
+    exit 0
+    ;;
+  esac
+}
+
+list_images() {
+  DIR=`pwd`
+  if [[ -d ${IMGFILE} ]] ; then DIR=${IMGFILE} ; fi
+  find $DIR /usr/lib/u-boot/bananapi | sort > $TMPFILE
+  echo "bpi images: (*.img.zip)"
+  for IN in `cat $TMPFILE | grep '\.img.zip$'` ; do
+    echo $IN
+  done
+  echo "bpi images: (*.img)"
+  for IN in `cat $TMPFILE | grep '\.img$'` ; do
+    echo $IN
+  done
+  echo "bpi images: (*.img.gz)"
+  for IN in `cat $TMPFILE | grep '\.img.gz$'` ; do
+    echo $IN
+  done
+  echo "xz images: (*.xz)"
+  for IN in `cat $TMPFILE | grep '\.xz$'` ; do
+    echo $IN
+  done
+  echo "zip images: (*.zip)"
+  for IN in `cat $TMPFILE | grep '\.zip$'` ; do
+    echo $IN
+  done
+  echo "raw images: (*.raw)"
+  for IN in `cat $TMPFILE | grep '\.raw$'` ; do
+    echo $IN
+  done
+  rm -f $TMPFILE
+}
+
+list_disks() {
+  echo
+  echo "Disks: (lsblk | grep disk)"
+  lsblk | grep disk
+  echo
+  echo "Disks: (fdisk -l | grep Disk | grep bytes)"
+  fdisk -l | grep Disk | grep bytes
+}
+
+umount_device() {
+  echo "umount device: ${DEVICE}"
+  for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"` ; do
+    PART=$IN
+    echo umount $PART
+    umount $PART
+  done
+}
+
+
+
+
+create_new_disk() {
+  echo
+  echo "#####################"
+  echo "# Creating new disk"
+  echo "# DISKSIZE = ${SIZE}"
+  echo "#####################"
+  echo
+  #dd if=/dev/zero bs=1M count=${SIZE} | pv | dd of=${DEVICE}
+  LOOP_DEV=${DEVICE}
+  LOOP_PART_BOOT="${LOOP_DEV}1"
+  LOOP_PART_SYS="${LOOP_DEV}2"
+  echo
+  echo "#########################"
+  echo " +>${LOOP_DEV} "
+  echo " +->${LOOP_PART_BOOT} "
+  echo " +->${LOOP_PART_SYS} "
+  echo "#########################"
+  echo
+  #
+  echo
+  echo "#############################"
+  echo "# Creating partitions table #"
+  echo "#############################"
+  echo
+  sudo parted -s "${LOOP_DEV}" mklabel msdos
+  sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary fat32 -- 100MiB 356MiB
+  sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary ext2 -- 356MiB ${SIZE}MiB
+  sudo parted -s "${LOOP_DEV}" set 1 boot on
+  sudo parted -s "${LOOP_DEV}" print
+  sudo partprobe "${LOOP_DEV}"
+  #
+  echo
+  echo "########################"
+  echo "# Creating filesystems #"
+  echo "########################"
+  echo
+  sudo mkfs.vfat "${LOOP_PART_BOOT}" -I -n BPI-BOOT
+  sudo mkfs.ext4 -O ^has_journal -E stride=2,stripe-width=1024 -b 4096 "${LOOP_PART_SYS}" -L BPI-ROOT
+  sudo sync
+}
+
+create_new_image() {
+  if [ -z ${SIZE} ] ; then
+    SIZE=7456
+  fi
+  if [ -z ${BOOTSIZE} ] ; then
+    BOOTSIZE=256
+  fi
+  RAWSIZE=100
+  OFFSET=$((RAWSIZE + BOOTSIZE))
+  echo "SIZE=$SIZE, RAWSIZE=$RAWSIZE, BOOTSIZE=$BOOTSIZE, OFFSET=$OFFSET"
+  echo
+  echo "#####################"
+  echo "# Creating img file #"
+  echo "#    ${SIZE} = 8G EMMC #"
+  echo "#####################"
+  echo
+  dd if=/dev/zero bs=1M count=${SIZE} | pv | dd of=${IMGFILE}
+  LOOP_DEV=`sudo losetup -f --show ${IMGFILE}`
+  LOOP_PART_BOOT="${LOOP_DEV}p1"
+  LOOP_PART_SYS="${LOOP_DEV}p2"
+  echo
+  echo "#########################"
+  echo " +>${LOOP_DEV} "
+  echo " +->${LOOP_PART_BOOT} "
+  echo " +->${LOOP_PART_SYS} "
+  echo "#########################"
+  echo
+  #
+  SIZE1=$((SIZE - 1))
+  echo
+  echo "#############################"
+  echo "# Creating partitions table #"
+  echo "#############################"
+  echo
+  sudo parted -s "${LOOP_DEV}" mklabel msdos
+  sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary fat32 -- ${RAWSIZE}MiB ${OFFSET}MiB
+  sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary ext2 -- ${OFFSET}MiB ${SIZE1}MiB
+  sudo parted -s "${LOOP_DEV}" set 1 boot on
+  sudo parted -s "${LOOP_DEV}" print
+  sudo partprobe "${LOOP_DEV}"
+  #
+  echo
+  echo "########################"
+  echo "# Creating filesystems #"
+  echo "########################"
+  echo
+  sudo mkfs.vfat "${LOOP_PART_BOOT}" -I -n BPI-BOOT
+  sudo mkfs.ext4 -O ^has_journal -E stride=2,stripe-width=1024 -b 4096 "${LOOP_PART_SYS}" -L BPI-ROOT
+  sudo sync
+}
+
+mount_image() {
+  LOOP_DEV=`sudo losetup -f --show ${IMGFILE}`
+  LOOP_PART_BOOT="${LOOP_DEV}p1"
+  LOOP_PART_SYS="${LOOP_DEV}p2"
+  echo
+  echo "#########################"
+  echo " +>${LOOP_DEV} "
+  echo " +->${LOOP_PART_BOOT} "
+  echo " +->${LOOP_PART_SYS} "
+  echo "#########################"
+  echo
+  #
+  sudo sync
+}
+
+write_uboot() {
+  echo
+  echo "##########################"
+  echo "# Burning the bootloader #"
+  echo "##########################"
+  echo
+  if [ -f "${UBOOTIMGGZ}" ] ; then
+    sudo gunzip -c ${UBOOTIMGGZ} | dd of=${LOOP_DEV} bs=1024 seek=8
+  else
+    echo "Warning: CAN NOT OPEN bootloader file ${UBOOTIMGGZ}"
+  fi
+  sudo sync
+}
+
+write_bpi_boot() {
+  #df -k | grep "/dev/sdc1" | awk '{ print $6 }'
+  echo
+  echo "######################"
+  echo "# Copying boot files #"
+  echo "######################"
+  echo
+  sudo mount -t vfat "${LOOP_PART_BOOT}" /mnt
+  if [ -f "${BOOTFILE}" ] ; then
+    sudo tar xf ${BOOTFILE} -C /mnt 2>/dev/null
+  else
+    echo "Warning: CAN NOT OPEN BOOTFILE ${BOOTFILE}"
+  fi
+  sudo sync
+  ls -al /mnt
+  sudo umount /mnt
+}
+
+write_bpi_root() {
+BPIFILES="bpi-tools.tgz
+3.3.0-BPI-M2-Kernel.tgz
+3.4.39-BPI-M2P-Kernel.tgz
+3.4.39-BPI-M3-Kernel.tgz
+3.4.112-sun8i.tgz
+3.4.112-sun7i.tgz
+3.10.101-pine64-bpi-m64.tgz
+rpi-kernel.tgz
+libvdpau_sunxi.tgz
+bt.tgz
+brcm.tgz"
+ROOTDIR=/mnt
+  echo
+  echo "##################"
+  echo "# Copying rootfs #"
+  echo "##################"
+  echo
+  echo "sudo mount -t ext4 "${LOOP_PART_SYS}" /mnt"
+  sudo mount -t ext4 "${LOOP_PART_SYS}" /mnt
+  #sudo rm -rf /mnt/*
+  for IN in ${ROOTFILE} ${BPIFILES} ; do
+    if [ -f "${IN}" ] ; then
+      echo tar xvf $IN --keep-directory-symlink -C $ROOTDIR
+      tar xf $IN --keep-directory-symlink -C $ROOTDIR
+    else
+      if [ -d "${IN}" ] ; then
+        echo tar from dir ${ROOTFILE}
+        (cd ${IN} ; tar cf - .) | (cd $ROOTDIR ; tar xf -)
+      else
+        echo "Warning: CAN NOT OPEN rootfs file ${IN}"
+      fi
+    fi
+  done
+  sudo sync
+  ls -al /mnt
+  sudo umount /mnt
+}
+
+release_loopdev() {
+  echo
+  echo release_loopdev
+  echo
+  echo "sudo losetup -d ${LOOP_DEV}"
+  sudo losetup -d ${LOOP_DEV}
+  echo
+  LOOPDEV=$(losetup -a | awk '{ print $1 }' | rev | cut -c 2- | rev | tac)
+  for IN in $LOOPDEV; do
+        echo "losetup -d $IN"
+        losetup -d $IN
+  done
+  echo "###########"
+  echo "# Done !! #"
+  echo "###########"
+}
+
+disk_to_bpi_image() {
+  DEVICE="$SRC"
+  IMGFILE="$DST"
+  #
+  #step 1: 7456MB(emmc size)
+  create_new_image
+  #
+  #step 2: 100MB
+  write_uboot
+  #
+  #step 3: 256MB
+  write_bpi_boot
+  #
+  #step 4: ~7456MB
+  write_bpi_root
+  #
+  #step 5: release loop dev.
+  release_loopdev
+  #
+}
+
+requires_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo >&1 "ERROR: This command can only be used by root."
+    exit 1
+  fi
+}
+
+blue_led_on() {
+  echo "*** start COPY (blue led on ) ....."
+  if [ -f /sys/class/leds/blue_led/trigger ]; then
+    echo default-on > /sys/class/leds/blue_led/trigger
+  fi
+}
+
+blue_led_off() {
+  echo "***  end  COPY (blue led off) ....."
+  if [ -f /sys/class/leds/blue_led/trigger ]; then
+    echo none > /sys/class/leds/blue_led/trigger
+  fi
+}
+
+bpi_copy_image() {
+  echo "=============================================================="
+  echo IMGFILE=${IMGFILE}
+  echo "=============================================================="
+  case ${IMGFILE} in
+  *.zip)
+    echo zip
+    unzip -p ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *.img)
+    echo img
+    dd if=${IMGFILE} bs=10M | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *.raw)
+    echo raw
+    dd if=${IMGFILE} bs=10M | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *.img.gz)
+    echo img.gz
+  #  ( gunzip -c ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer ) > /dev/null 2>&1
+    gunzip -dc ${IMGFILE} | pv | dd of=${DEVICE} bs=1024 seek=8 status=noxfer
+    ;;
+  *.xz)
+    echo xz
+    unxz -c ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *.7z)
+    echo 7z
+    7z x -so ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *)
+    echo default
+    ;;
+  esac
+  sync;sync;sync
+}
+
+bpi_copy_disk() {
+  echo "=============================================================="
+  echo IMGFILE=${IMGFILE}
+  echo "=============================================================="
+  case ${IMGFILE} in
+  *.zip)
+    echo zip
+    if [ -z ${SIZE} ] ; then
+      echo "dd if=${DEVICE} bs=1M | pv | zip ${IMGFILE} -"
+      dd if=${DEVICE} bs=1M | pv | zip ${IMGFILE} -
+    else
+      echo "dd if=${DEVICE} bs=1M count=${SIZE} | pv | zip ${IMGFILE} -"
+      dd if=${DEVICE} bs=1M count=${SIZE} | pv | zip ${IMGFILE} -
+    fi
+    ;;
+  *.img)
+    echo img
+    if [ -z ${SIZE} ] ; then
+      dd if=${DEVICE} bs=10M | pv | dd of=${IMGFILE} bs=10M status=noxfer
+    else
+      echo "dd if=${DEVICE} bs=1M count=${SIZE} | pv | dd of=${IMGFILE} bs=10M status=noxfer"
+      dd if=${DEVICE} bs=1M count=${SIZE} | pv | dd of=${IMGFILE} bs=10M status=noxfer
+    fi
+    ;;
+  *.raw)
+    echo raw
+    dd if=${DEVICE} bs=10M | pv | dd of=${IMGFILE} bs=10M status=noxfer
+    ;;
+  *.img.gz)
+    echo img.gz
+    #( gunzip -c ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer ) > /dev/null 2>&1
+    #gunzip -dc ${IMGFILE} | pv | dd of=${DEVICE} bs=1024 seek=8 status=noxfer
+    ;;
+  *.xz)
+    echo xz
+    #unxz -c ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer
+  ;;
+  *.7z)
+    echo 7z
+    #7z x -so ${IMGFILE} | pv | dd of=${DEVICE} bs=10M status=noxfer
+    ;;
+  *)
+    echo default
+    ;;
+  esac
+  sync;sync;sync
+}
+
+bpi_imagetodisk() {
+  usage
+  if [ ! -f "${IMGFILE}" ] ; then
+    echo "Warning: CAN NOT USE ${IMGFILE}"
+    exit 0
+  fi
+  echo "Warning: Try to write ${IMGFILE} to BOOTDISK ${DEVICE}"
+  requires_root
+  echo "=============================================================="
+  STARTTIME=`date +%s`
+  date
+  blue_led_on
+  umount_device
+  bpi_copy_image
+  (eject ${DEVICE}) > /dev/null 2>&1
+  blue_led_off
+  date
+  ENDTIME=`date +%s`
+  RUNTIMESEC=$((ENDTIME-STARTTIME))
+  MIN=$(((RUNTIMESEC)/60))
+  SEC=$(((RUNTIMESEC)%60))
+  echo "=============================================================="
+  echo "RUNTIME" "${MIN}:${SEC}"
+  echo "OK!! You can remove the BOOTDISK ${DEVICE} now!!"
+  exit 0
+}
+
+bpi_disktoimage() {
+  usage
+  if [ ! -b ${DEVICE} ] ; then
+    echo "Warning: CAN NOT USE ${DEVICE}"
+    exit 0
+  fi
+  echo "Info: Try to write ${DEVICE} to BOOTDISK ${IMGFILE}"
+  requires_root
+  echo "=============================================================="
+  STARTTIME=`date +%s`
+  date
+  #blue_led_on
+  umount_device
+  bpi_copy_disk
+  (eject ${DEVICE}) > /dev/null 2>&1
+  #blue_led_off
+  date
+  ENDTIME=`date +%s`
+  RUNTIMESEC=$((ENDTIME-STARTTIME))
+  MIN=$(((RUNTIMESEC)/60))
+  SEC=$(((RUNTIMESEC)%60))
+  echo "=============================================================="
+  echo "RUNTIME" "$MIN:$SEC"
+  echo "OK!! You can remove the BOOTDISK ${DEVICE} now!!"
+  exit 0
+}
+
+bpi_createnewdisk() {
+  usage
+  if [ ! -b ${DEVICE} ] ; then
+    echo "Warning: CAN NOT USE ${DEVICE}"
+    exit 0
+  fi
+  echo "Info: Try to create NEW BOOTDISK ${DEVICE} with ${IMGFILE}"
+  requires_root
+  echo "=============================================================="
+  STARTTIME=`date +%s`
+  date
+  #blue_led_on
+  umount_device
+  #
+  #step 1: 7456MB(emmc size)
+  create_new_disk
+  #step 2: 100MB
+  write_uboot
+  #
+  #step 3: 256MB
+  write_bpi_boot
+  #
+  #step 4: ~7456MB
+  write_bpi_root
+  #
+  (eject ${DEVICE}) > /dev/null 2>&1
+  #blue_led_off
+  date
+  ENDTIME=`date +%s`
+  RUNTIMESEC=$((ENDTIME-STARTTIME))
+  MIN=$(((RUNTIMESEC)/60))
+  SEC=$(((RUNTIMESEC)%60))
+  echo "=============================================================="
+  echo "RUNTIME" "$MIN:$SEC"
+  echo "OK!! You can remove the BOOTDISK ${DEVICE} now!!"
+  exit 0
+}
+
+bpi_migratefromroot() {
+  if [ -z ${IMGFILE} ] ; then
+    IMGFILE="${ROOTFILE}-bpi-m3.img"
+    if [ -d ${ROOTFILE} ] ; then
+      A=$(date +%F)
+      B=$(basename ${ROOTFILE})
+      IMGFILE="${A}_${B}-bpi-m3.img"
+    fi
+    echo IMGFILE=${IMGFILE}
+  fi
+  echo "Info: Try to create NEW IMAGE ${IMGFILE} with ${ROOTFILE}"
+  requires_root
+  echo "=============================================================="
+  STARTTIME=`date +%s`
+  date
+  #blue_led_on
+  #
+  #step 1: 7456MB(emmc size)
+  create_new_image
+  #step 2: 100MB
+  write_uboot
+  #
+  #step 3: 256MB
+  write_bpi_boot
+  #
+  #step 4: ~7456MB
+  write_bpi_root
+  #
+  #step 5: release loop dev.
+  release_loopdev
+  #blue_led_off
+  date
+  ENDTIME=`date +%s`
+  RUNTIMESEC=$((ENDTIME-STARTTIME))
+  MIN=$(((RUNTIMESEC)/60))
+  SEC=$(((RUNTIMESEC)%60))
+  echo "=============================================================="
+  echo "RUNTIME" "$MIN:$SEC"
+  echo "OK!!"
+  exit 0
+}
+
+bpi_migratefromimg() {
+  if [ -z ${UBOOTIMGGZ} ] ; then
+    UBOOTIMGGZ=BPI_M3_720P.img.gz
+    echo UBOOTIMGGZ=${UBOOTIMGGZ}
+  fi
+  echo "Info: Try to create NEW IMAGE ${IMGFILE} with ${UBOOTIMGGZ}"
+  requires_root
+  echo "=============================================================="
+  STARTTIME=`date +%s`
+  date
+  #blue_led_on
+  #
+  #step 1: 7456MB(emmc size)
+  mount_image
+  #step 2: 100MB
+  write_uboot
+  #
+  #step 3: 256MB
+  #write_bpi_boot
+  #
+  #step 4: ~7456MB
+  #write_bpi_root
+  #
+  #step 5: release loop dev.
+  release_loopdev
+  #step 6: img to zip
+  #cat ${IMGFILE} | pv | zip ${IMGFILE}.zip -
+  echo zip ${IMGFILE}.zip 
+  zip ${IMGFILE}.zip ${IMGFILE}
+  #blue_led_off
+  date
+  ENDTIME=`date +%s`
+  RUNTIMESEC=$((ENDTIME-STARTTIME))
+  MIN=$(((RUNTIMESEC)/60))
+  SEC=$(((RUNTIMESEC)%60))
+  echo "=============================================================="
+  echo "RUNTIME" "$MIN:$SEC"
+  echo "OK!!"
+  exit 0
+}
+
+#
+#BPI: download BPI-ROOT files from internet or intranet
+#
+bpi_root_intranet() {
+  #U="ftp://pi:bananapi@127.0.0.1/BPI-ROOT"
+  U="ftp://pi:bananapi@172.20.10.7/BPI-ROOT"
+  bpi-tools --update BPIURL="${U}/BPI-ROOT.lst" BPIFILE=BPI-ROOT.lst
+  bpi-tools --download BPIFILE=BPI-ROOT.lst BPIURLNEW="${U}"
+}
+
+bpi_root_google() {
+  U="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+  bpi-tools --download BPIURL="${U}" BPIFILE=BPI-ROOT.lst
+}
+
+bpi_root_main() {
+  if [[ "x${F_GOOGLE}" == "xYES" ]] ; then
+    echo bpi_root_google
+    bpi_root_google
+  else
+    echo bpi_root_intranet
+    bpi_root_intranet
+  fi
+}
+
+update_bpimode() {
+  #null
+  #echo SRC=$SRC
+  #echo DST=$DST
+  #1. check NEWBPIMODE
+  #NEWBPIMODE
+  if [ ! -z "${NEWBPIMODE}" ] ; then
+    BPIMODE=${NEWBPIMODE}
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  #2. check ROOTFILE
+  # ROOTFILE
+  if [ -f "${ROOTFILE}" ] ; then
+    BPIMODE=migratefromroot
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  if [ -d "${ROOTFILE}" ] ; then
+    BPIMODE=migratefromroot
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  #2. check IMGFILE
+  # IMGFILE
+  if [[ -f "${IMGFILE}" ]] ; then
+    BPIMODE=migratefromimg
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  #directory
+  if [ -d "${SRC}" ] ; then
+    BPIMODE=usage
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  #block special
+  if [ -b "${SRC}" ] ; then
+    BPIMODE=disktoimage
+    echo BPIMODE=${BPIMODE}
+    DEVICE=$SRC
+    IMGFILE=$DST
+    return
+  fi
+  #block special
+  if [ -b "${DST}" ] ; then
+    BPIMODE=imagetodisk
+    echo BPIMODE=${BPIMODE}
+    return
+  fi
+  #
+  echo BPIMODE=${BPIMODE}
+}
+
+
+bpi_migrate_main() 
+{
+  if [ ! -f "${BPIFILE}" ] ; then
+    download_index
+  fi
+  if [[ "x${F_UPDATE}" == "xYES" ]] ; then
+    download_index
+  fi
+  if [[ "x${F_DOWNLOAD}" == "xYES" ]] ; then
+    get_all_files
+  fi
+  #check BPIMODE: migratefromroot / migratefromimg / migratefromdisk / default
+  case ${BPIMODE} in
+  imagetodisk)
+    echo imagetodisk
+#    bpi_imagetodisk
+    ;;
+  disktoimage)
+    echo disktoimage
+#    bpi_disktoimage
+    ;;
+  createnewdisk)
+    echo createnewdisk
+#    bpi_createnewdisk
+    ;;
+  migratefromroot)
+    echo migratefromroot
+    bpi_migratefromroot
+    ;;
+  migratefromimg)
+    echo migratefromimg
+    bpi_migratefromimg
+    ;;
+  migratefromdisk)
+    echo migratefromdisk
+#    bpi_migratefromdisk
+    ;;
+  usage)
+    echo default
+    usage
+    list_images
+    list_disks
+    exit 0
+    ;;
+  esac
+}
+
+#step 0: main/getopt
+BPICMDOPT="r:U:b:i:d:S:D:s:B:uGvh"
+
+GETOPTEST=`getopt --version`
+case $GETOPTEST in
+getopt*) # GNU getopt
+  BPI_TEMP=`getopt -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
+  ;;
+*) # POSIX getopt ?
+  BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
+  ;;
+esac
+
+if test "$?" -ne 0; then
+  usage
+fi
+
+eval set -- "$BPI_TEMP"
+
+BPIDOPTS=""
+
+while test "X$1" != "X--"; do
+  case "$1" in
+    -r|--root)
+       shift
+       ROOTFILE="$1"
+       echo "ROOTFILE=${ROOTFILE}"
+       ;;
+    -U|--uboot)
+       shift
+       UBOOTIMGGZ="$1"
+       echo "UBOOTIMGGZ=${UBOOTIMGGZ}"
+       ;;
+    -b|--boot)
+       shift
+       BOOTFILE="$1"
+       echo "BOOTFILE=${BOOTFILE}"
+       ;;
+    -i|--imgfile)
+       shift
+       IMGFILE="$1"
+       echo "IMGFILE=${IMGFILE}"
+       ;;
+    -d|--device)
+       shift
+       DEVICE="$1"
+       echo "DEVICE=${DEVICE}"
+       ;;
+    -S|--src)
+       shift
+       SRC="$1"
+       echo "SRC=${SRC}"
+       ;;
+    -D|--dst)
+       shift
+       DST="$1"
+       echo "DST=${DST}"
+       ;;
+    -s|--size)
+       shift
+       SIZE="$1"
+       echo "SIZE=${SIZE}"
+       ;;
+    -B|--BOOTSIZE)
+       shift
+       BOOTSIZE="$1"
+       echo "BOOTSIZE=${BOOTSIZE}"
+       ;;
+    -u|--update)
+       echo "update"
+       F_UPDATE=YES
+       ;;
+    -G|--download)
+       echo "download"
+       F_DOWNLOAD=YES
+       ;;
+    -v|--version)
+       usage
+       exit 0
+       ;;
+    -h|--help)
+       usage
+       ;;
+  esac
+  shift
+done
+
+shift #get rid of the '--'
+
+#step 1: main
+update_bpimode
+bpi_migrate_main 
+

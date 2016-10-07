@@ -1,0 +1,406 @@
+#!/bin/bash
+#GPL
+#set -x
+BPILICENSE="GPLv2 or any later version"
+BPICMD="bpi-hw"
+BPICMDVERSION="v1.2.8"
+BPIOPT="$*"
+
+BPIDIR="/var/lib/bananapi"
+BPIHWFILE="$BPIDIR/board.sh"
+NEWBOARD=""
+F_CHANGE="no"
+
+ID="Banana Pi M3"
+BOARD="bpi-m3"
+F_BTCMD="none"
+F_AUTO="no"
+F_OSDEP="no"
+F_BOARD="no"
+F_TEMP="no"
+
+HAVE_BT="no"
+
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+
+######################################################
+for IN in "$@"
+do
+  if [[ "$IN" == *"="* ]] ; then
+    P=${IN%%=*}
+    V=${IN##*=}
+    echo "INFO: $P=${V:-(empty)}"
+    eval $P=$V
+  fi
+done
+######################################################
+
+usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi hardware tools.
+
+Usage: bpi-hw [OPTIONS]...
+       bpi-hw [ --help | -v | --version ]
+
+Options:
+
+  -A, --auto            auto detect board
+  -B, --board BOARD     set BOARD=[bpi-m3|bpi-m2p|bpi-m2|bpi-r1|bpi-m1p|bpi-m1]
+  -b, --bt CMD          BT function, CMD=[on|status|scan|list|unblock]
+                        or  CMD=[rfkill|hciconfig|hcitool|bluetoothctl]
+  -O, --osdep MODE      OS DEP. setup, MODE=[yes|list|backup|restore]
+  -t, --temp            Print temp.
+  -h, --help            Print usage
+  -v, --version         Print version information and quit
+
+EOF
+  exit 1
+}
+
+requires_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo >&1 "ERROR: This command can only be used by root."
+    exit 1
+  fi
+}
+
+bpi_check_auto()
+{
+  NEWBOARD="bpi-m3"
+  # parse command line arguments
+  for arg in $(cat /proc/cmdline); do
+    case $arg in
+      board=*)
+        NEWBOARD="${arg#*=}"
+        return
+        ;;
+    esac
+  done
+  #BPI
+  # x86
+  if (( $(uname -p | grep -ci -m1 'x86') == 1 )); then
+    NEWBOARD="bpi-x86"
+    return
+  fi
+  # rpi
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'bcm') == 1 )); then
+    NEWBOARD="bpi-rpi"
+    return
+  fi
+  # new , non-sunxi
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'sun') != 1 )); then
+    NEWBOARD="bpi-new"
+    return
+  fi
+  # sun8i , bpi-m3 or bpi-m2p
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'sun8i') == 1 )); then
+    # sun8i , bpi-m3 8 cores or bpi-m2p 4 cores
+    if (( $(cat /proc/cpuinfo | grep processor | wc -l ) == 8 )); then
+      NEWBOARD="bpi-m3"
+    else
+      NEWBOARD="bpi-m2p"
+    fi
+    return
+  fi
+  # sun50i , bpi-m64
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'sun50i') == 1 )); then
+    NEWBOARD="bpi-m64"
+    return
+  fi
+  # sun6i , bpi-m2
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'sun6i') == 1 )); then
+    NEWBOARD="bpi-m2"
+    return
+  fi
+  # sun7i , bpi-m1 / bpi-m1p / bpi-r1
+  if (( $(cat /proc/cpuinfo | grep -ci -m1 'sun7i') == 1 )); then
+    CHIP="a20"
+    DMESGFILE="/tmp/.${BPICMD}.tmp.$$"
+    dmesg -t >$DMESGFILE
+    # sun7i , bpi-r1 with SWICTH BCM53125
+    if (( $(cat $DMESGFILE | grep -ci -m1 'BCM53125') == 1 )); then
+      NEWBOARD="bpi-r1"
+    else
+      # sun7i , bpi-m1p 40 pins with I2S / bpi-m1 26 pins
+      if (( $(cat $DMESGFILE | grep -ci -m1 'sunxi-sndi2s') == 1 )); then
+        NEWBOARD="bpi-m1p"
+      else
+        NEWBOARD="bpi-m1"
+      fi
+    fi
+    rm -f $DMESGFILE
+    return
+  fi
+}
+
+bpi_turn_on_bt()
+{
+  requires_root
+  echo "info: try to bpi_turn_on_bt"
+  if [ -f /usr/local/bin/bpi-bt-patch ] ; then
+    . /usr/local/bin/bpi-bt-patch
+  fi
+  if [ -f /usr/local/bin/bpi-bt-on ] ; then
+    . /usr/local/bin/bpi-bt-on
+  fi
+}
+
+bpi_hw_bt()
+{
+  CMD=$1
+  case ${CMD} in
+  none)
+    ;;
+  off)
+    ;;
+  on)
+    if [ "x$HAVE_BT" == "xyes" ] ; then
+      bpi_turn_on_bt
+    fi
+    ;;
+  status)
+    echo "hcitool dev"
+    hcitool dev
+    ;;
+  scan)
+    echo "hcitool scan"
+    hcitool scan
+    ;;
+  list)
+    echo "rfkill list"
+    rfkill list
+    ;;
+  unblock)
+    echo "rfkill unblock bluetooth"
+    rfkill unblock bluetooth
+    ;;
+  rfkill)
+    echo "rfkill $BPIOPT"
+    rfkill $BPIOPT
+    ;;
+  hciconfig)
+    echo "hciconfig $BPIOPT"
+    hciconfig $BPIOPT
+    ;;
+  hcitool)
+    echo "hcitool $BPIOPT"
+    hcitool $BPIOPT
+    ;;
+  bluetoothctl)
+    echo "bluetoothctl $BPIOPT"
+    bluetoothctl $BPIOPT
+    ;;
+  *)
+    echo "CMD=$CMD unsupport!!"
+    echo "CMD=[on|status|scan|list|unblock|rfkill|hciconfig|hcitool|bluetoothctl]"
+    ;;
+  esac
+}
+
+bpi_hw_osdep()
+{
+  OSDEPFILE="$BPIDIR/osdep.sh"
+  if [ -f $OSDEPFILE ] ; then
+    . $OSDEPFILE
+  else
+    BPI_OS="xenial_mate"
+    echo "BPI_OS=$BPI_OS" > $OSDEPFILE 
+  fi
+  BPI_OSDIR="$BPIDIR/run/$BPI_OS/$BOARD"
+  if [ ! -d $BPI_OSDIR ] ; then
+    sudo mkdir -p $BPI_OSDIR
+  fi
+  HWDEPFILE="$BPIDIR/osdep/${BPI_OS}.conf"
+  BAKFILE="$BPI_OSDIR/backup.tgz"
+  HWDEP=$(cat $HWDEPFILE)
+  MODE=$1
+  #
+  echo BPI_OS=$BPI_OS
+  echo OSDEPFILE=$OSDEPFILE
+  echo BPI_OSDIR=$BPI_OSDIR
+  echo HWDEPFILE=$HWDEPFILE
+  echo BAKFILE=$BAKFILE
+  #
+  requires_root
+  case ${F_OSDEP} in
+  list)
+    echo "HW osdep files:"
+    for IN in $HWDEP ; do
+      echo $IN
+    done
+    ;;
+  backup)
+    echo "HW osdep files(backup to $BAKFILE):"
+    tar czvf $BAKFILE -C / -T $HWDEPFILE
+    ;;
+  restore)
+    echo "HW osdep files(restore from $BAKFILE):"
+    tar xvf $BAKFILE -C /
+    ;;
+  yes)
+    echo $BOARD
+    BAKFILE="$BPI_OSDIR/bananapi.tgz"
+    echo "HW osdep files(backup to $BAKFILE):"
+    tar czf $BAKFILE -C / -T $HWDEPFILE
+    for IN in $HWDEP ; do
+      rm -rf $IN
+    done
+    echo "HW osdep files(new from $BOARD):"
+    (cd $BPI_OSDIR/root ; tar cf - . ) | (cd / ; tar xvf -)
+    ldconfig
+    ;;
+  *)
+    echo $BOARD
+    #ldconfig
+    ;;
+  esac
+}
+
+bpi_hw_main() 
+{
+  if [ ! -d $BPIDIR ] ; then
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "INFO: first time, please run sudo $BPICMD"
+      exit 1
+    fi
+    requires_root
+    mkdir -p $BPIDIR
+  fi
+  #
+  ## detect board
+  #
+  if [ -f $BPIHWFILE ] ; then
+    . $BPIHWFILE
+  else
+    F_AUTO="yes"
+    F_CHANGE="yes"
+  fi
+  if [ "x$F_AUTO" == "xyes" ] ; then
+    bpi_check_auto
+    if [ "x$NEWBOARD" != "x$BOARD" ] ; then
+      F_CHANGE="yes"
+    fi
+    if [ "x$F_CHANGE" == "xyes" ] ; then
+      requires_root
+      echo "BOARD=$NEWBOARD" > $BPIHWFILE
+      echo "BOARD_AUTO=$NEWBOARD" >> $BPIHWFILE
+      echo "BOARD_OLD=$BOARD" >> $BPIHWFILE
+      BOARD=$NEWBOARD
+    fi
+  fi
+  if [ "x$F_BOARD" == "xyes" ] ; then
+    requires_root
+    echo "#DATE=$(date)" >> $BPIHWFILE
+    echo "BOARD_SET=${SET_BOARD}" >> $BPIHWFILE
+    BOARD=${SET_BOARD}
+    echo "BOARD=$BOARD" >> $BPIHWFILE
+  fi
+  echo $BOARD
+  BOARDDIR=$BPIDIR/board
+  BOARDFILE=$BOARDDIR/$BOARD
+  if [ ! -d $BOARDDIR ] ; then
+    sudo mkdir -p $BOARDDIR
+  fi
+  if [ ! -f $BOARDFILE ] ; then
+     requires_root
+     echo "HAVE_VER=1" >> $BOARDFILE
+     echo "HAVE_GMAC=yes" >> $BOARDFILE
+     echo "HAVE_SATA=no" >> $BOARDFILE
+     echo "HAVE_LCD=no" >> $BOARDFILE
+     echo "HAVE_MIPILCD=no" >> $BOARDFILE
+     echo "HAVE_CAMERA=no" >> $BOARDFILE
+     echo "HAVE_BT=no" >> $BOARDFILE
+     echo "HAVE_WIFI=no" >> $BOARDFILE
+     echo "HAVE_SWITCH=no" >> $BOARDFILE
+  fi
+  . $BOARDFILE
+  #
+  ## turn on BT
+  #
+  if [ "x$F_BTCMD" != "xnone" ] ; then
+    bpi_hw_bt $F_BTCMD
+  fi
+
+  #
+  ## config files
+  #
+  if [ "x$F_OSDEP" != "xno" ] ; then
+    bpi_hw_osdep $F_OSDEP
+  fi
+  #
+  ## check temp
+  #
+  if [ "x$F_TEMP" == "xyes" ] ; then
+    TEMPFILE=/sys/class/thermal/thermal_zone0/temp
+    if [ -f $TEMPFILE ] ; then
+      cat $TEMPFILE
+    fi
+  fi
+}
+
+#step 0: main/getopt
+BPICMDOPT="B:AO:b:tvh"
+
+GETOPTEST=`getopt --version`
+case $GETOPTEST in
+getopt*) # GNU getopt
+  BPI_TEMP=`getopt -l board: -l auto -l osdep: -l bt: -l temp -l version -l help -- +${BPICMDOPT} "$@"`
+  ;;
+*) # POSIX getopt ?
+  BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
+  ;;
+esac
+
+if test "$?" -ne 0; then
+  usage
+fi
+
+eval set -- "$BPI_TEMP"
+
+BPIDOPTS=""
+
+while test "X$1" != "X--"; do
+  case "$1" in
+    -B|--board)
+       shift
+       F_BOARD="yes"
+       SET_BOARD="$1"
+       echo "SET_BOARD=${SET_BOARD}"
+       ;;
+    -A|--auto)
+       F_AUTO="yes"
+       echo "F_AUTO=${F_AUTO}"
+       ;;
+    -O|--osdep)
+       shift
+       F_OSDEP="$1"
+       echo "F_OSDEP=${F_OSDEP}"
+       ;;
+    -b|--bt)
+       shift
+       F_BTCMD="$1"
+       echo "F_BTCMD=${F_BTCMD}"
+       ;;
+    -t|--temp)
+       F_TEMP="yes"
+       echo "F_TEMP=${F_TEMP}"
+       ;;
+    -v|--version)
+       usage
+       exit 0
+       ;;
+    -h|--help)
+       usage
+       ;;
+  esac
+  shift
+done
+
+shift #get rid of the '--'
+BPIOPT=$*
+#echo BPTOPT=$BPIOPT
+
+
+#step 1: main
+bpi_hw_main
+

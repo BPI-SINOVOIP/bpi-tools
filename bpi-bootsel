@@ -1,0 +1,77 @@
+#!/bin/bash
+#GPL
+BPICMDVERSION="v1.0.5"
+DEVICE=$2
+
+IMGFILE=$1
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
+
+usage()
+{
+	echo "       bpi-bootsel $BPICMDVERSION"
+	echo "usage: bpi-bootsel"
+	echo "       bpi-bootsel IMGFILE"
+	echo "       bpi-bootsel IMGFILE DEVICE"
+	echo 
+}
+
+list_images()
+{
+	echo "bpi images:"
+	for IN in `find /usr/lib/u-boot/bananapi | grep img.gz`
+	do
+		echo $IN
+	done
+}
+
+list_disks()
+{
+        echo
+        echo "Disks: (lsblk | grep disk)"
+        lsblk | grep disk
+        echo
+        echo "Disks: (fdisk -l | grep Disk | grep bytes)"
+        fdisk -l | grep Disk | grep bytes
+}
+
+umount_device()
+{
+        echo "umount device: $DEVICE"
+        for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"`
+        do
+                PART=$IN
+                echo umount $PART
+                (umount $PART) 2>/dev/null
+        done
+}
+
+requires_root() {
+        if [ "$(id -u)" -ne 0 ]; then
+                echo >&1 "ERROR: This command can only be used by root."
+                exit 1
+        fi
+}
+
+if [ -z ${IMGFILE} ] ; then
+	usage
+	list_images
+	list_disks
+	exit 0
+fi
+
+if [ -f ${IMGFILE} ] ; then
+	echo "Warning: Try to write $IMGFILE to BOOTDISK $DEVICE"
+	requires_root
+	umount_device
+	( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=8 status=noxfer ) > /dev/null 2>&1
+	(eject $DEVICE) > /dev/null 2>&1
+	if [[ $DEVICE == "/dev/mmcblk0" ]]; then
+		echo "OK!! You can reboot the system now!!"
+	else
+		echo "OK!! You can remove the BOOTDISK $DEVICE now!!"
+	fi
+	exit 0
+fi
+
+
+

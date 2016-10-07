@@ -1,0 +1,76 @@
+#!/bin/bash
+#GPL
+BPICMDVERSION="v1.0.3"
+DEVICE=$2
+
+IMGFILE=$1
+BPIFILE="$HOME/.bpi-files.lst"
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
+
+usage()
+{
+	echo "       bpi-get $BPICMDVERSION"
+	echo "usage: bpi-get"
+	echo "       bpi-get FILE"
+	echo 
+}
+
+list_images()
+{
+	echo BPIFILE=$BPIFILE
+	BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjTXhaTHpLSElGQUk"
+	echo "Wait for download index file ..."
+#	wget -O $BPIFILE $BPIURL
+	curl -s -L $BPIURL > $BPIFILE
+	echo 
+	echo "bpi files:"
+	for IN in `cat $BPIFILE | awk '{ print $2 }'`
+	do
+		echo $IN
+	done
+}
+
+get_images()
+{
+	MD5TMP="/tmp/.md5.tmp.$$"
+	echo "BPIFILE=$BPIFILE"
+	echo "IMGFILE=$IMGFILE"
+	echo "MD5TMP=$MD5TMP"
+	LINE=`cat $BPIFILE | grep $IMGFILE`
+#	echo LINE=$LINE
+	set -- $LINE
+	BPIURL=$3
+	echo "$1  $2" > $MD5TMP
+#	cat $BPIFILE | grep $IMGFILE | awk '{ print "MD5=" $1 " ; IMGFILE=" $2 " ; BPIURL=" $3 }'
+	curl -L $BPIURL > $IMGFILE
+	md5sum -c $MD5TMP
+	rm -f $MD5TMP
+	file $IMGFILE | grep "shell script"
+	SHELLCMD=$?
+	if [ $SHELLCMD -eq 0 ] ; then
+		grep "^BPICMDVERSION=" $IMGFILE
+	fi
+}
+
+requires_root() {
+        if [ "$(id -u)" -ne 0 ]; then
+                echo >&1 "ERROR: This command can only be used by root."
+                exit 1
+        fi
+}
+
+if [ -z ${IMGFILE} ] ; then
+	usage
+	list_images
+	exit 0
+fi
+
+if [ -f ${BPIFILE} ] ; then
+	echo "INFO: Try to get $IMGFILE ..."
+#	requires_root
+	get_images
+	exit 0
+fi
+
+
+

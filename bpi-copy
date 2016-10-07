@@ -1,0 +1,309 @@
+#!/bin/bash
+#GPL
+BPICMDVERSION="v1.0.10a"
+
+
+SRC=$1
+DST=$2
+SIZE=$3
+
+IMGFILE=$SRC
+DEVICE=$DST
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+
+TMPFILE=/tmp/.bpi-copy.tmp.$$
+
+usage()
+{
+	echo "       bpi-copy $BPICMDVERSION"
+	echo "usage: bpi-copy"
+	echo "       bpi-copy IMGFILE"
+	echo "       bpi-copy IMGDIR"
+	echo "       bpi-copy IMGFILE DEVICE"
+	echo "       bpi-copy DEVICE IMGFILE"
+	echo 
+}
+
+list_images()
+{
+	DIR=`pwd`
+	if [[ -d ${IMGFILE} ]] ; then DIR=${IMGFILE} ; fi
+	find $DIR /usr/lib/u-boot/bananapi | sort > $TMPFILE
+	echo "bpi images: (*.img.zip)"
+	for IN in `cat $TMPFILE | grep '\.img.zip$'`
+	do
+		echo $IN
+	done
+	echo "bpi images: (*.img)"
+	for IN in `cat $TMPFILE | grep '\.img$'`
+	do
+		echo $IN
+	done
+	echo "bpi images: (*.img.gz)"
+	for IN in `cat $TMPFILE | grep '\.img.gz$'`
+	do
+		echo $IN
+	done
+	echo "xz images: (*.xz)"
+	for IN in `cat $TMPFILE | grep '\.xz$'`
+	do
+		echo $IN
+	done
+	echo "zip images: (*.zip)"
+	for IN in `cat $TMPFILE | grep '\.zip$'`
+	do
+		echo $IN
+	done
+	echo "raw images: (*.raw)"
+	for IN in `cat $TMPFILE | grep '\.raw$'`
+	do
+		echo $IN
+	done
+	rm -f $TMPFILE
+}
+
+list_disks()
+{
+	echo
+	echo "Disks: (lsblk | grep disk)"
+	lsblk | grep disk
+	echo
+	echo "Disks: (fdisk -l | grep Disk | grep bytes)"
+	fdisk -l | grep Disk | grep bytes
+}
+
+umount_device()
+{
+	echo "umount device: $DEVICE"
+	for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"`
+	do
+		PART=$IN
+		echo umount $PART
+		umount $PART
+	done
+}
+
+requires_root() {
+        if [ "$(id -u)" -ne 0 ]; then
+                echo >&1 "ERROR: This command can only be used by root."
+                exit 1
+        fi
+}
+
+blue_led_on()
+{
+	echo "*** start COPY (blue led on ) ....."
+	if [ -f /sys/class/leds/blue_led/trigger ]; then
+		echo default-on > /sys/class/leds/blue_led/trigger
+	fi
+}
+
+blue_led_off()
+{
+	echo "***  end  COPY (blue led off) ....."
+	if [ -f /sys/class/leds/blue_led/trigger ]; then
+		echo none > /sys/class/leds/blue_led/trigger
+	fi
+}
+
+bpi_copy_image()
+{
+	echo "=============================================================="
+	echo IMGFILE=$IMGFILE
+	echo "=============================================================="
+	case ${IMGFILE} in
+	*.zip)
+		echo zip
+		unzip -p $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*.img)
+		echo img
+#		(dd if=$IMGFILE of=$DEVICE bs=10M status=noxfer ) > /dev/null 2>&1
+		dd if=$IMGFILE bs=10M | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*.raw)
+		echo raw
+		dd if=$IMGFILE bs=10M | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*.img.gz)
+		echo img.gz
+#		( gunzip -c $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer ) > /dev/null 2>&1
+		gunzip -dc $IMGFILE | pv | dd of=$DEVICE bs=1024 seek=8 status=noxfer
+		;;
+	*.xz)
+		echo xz
+		unxz -c $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*.7z)
+		echo 7z
+		7z x -so $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*)
+		echo default
+		;;
+	esac
+	sync;sync;sync
+}
+
+bpi_copy_disk()
+{
+	echo "=============================================================="
+	echo IMGFILE=$IMGFILE
+	echo "=============================================================="
+	case ${IMGFILE} in
+	*.zip)
+		echo zip
+		if [ -z ${SIZE} ] ; then
+		echo "dd if=$DEVICE bs=1M | pv | zip $IMGFILE -"
+		dd if=$DEVICE bs=1M | pv | zip $IMGFILE -
+		else
+		echo "dd if=$DEVICE bs=1M count=$SIZE | pv | zip $IMGFILE -"
+		dd if=$DEVICE bs=1M count=$SIZE | pv | zip $IMGFILE -
+		fi
+		;;
+	*.img)
+		echo img
+		if [ -z ${SIZE} ] ; then
+		dd if=$DEVICE bs=10M | pv | dd of=$IMGFILE bs=10M status=noxfer
+		else
+echo		"dd if=$DEVICE bs=1M count=$SIZE | pv | dd of=$IMGFILE bs=10M status=noxfer"
+		dd if=$DEVICE bs=1M count=$SIZE | pv | dd of=$IMGFILE bs=10M status=noxfer
+		fi
+		;;
+	*.raw)
+		echo raw
+		dd if=$DEVICE bs=10M | pv | dd of=$IMGFILE bs=10M status=noxfer
+		;;
+	*.img.gz)
+		echo img.gz
+#		( gunzip -c $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer ) > /dev/null 2>&1
+#		gunzip -dc $IMGFILE | pv | dd of=$DEVICE bs=1024 seek=8 status=noxfer
+		;;
+	*.xz)
+		echo xz
+#		unxz -c $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*.7z)
+		echo 7z
+#		7z x -so $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
+		;;
+	*)
+		echo default
+		;;
+	esac
+	sync;sync;sync
+}
+
+bpi_imagetodisk() 
+{
+	usage
+if [ -f ${IMGFILE} ] ; then
+	echo "Warning: Try to write $IMGFILE to BOOTDISK $DEVICE"
+	requires_root
+	echo "=============================================================="
+STARTTIME=`date +%s`
+	date
+	blue_led_on
+	umount_device
+	bpi_copy_image
+	(eject $DEVICE) > /dev/null 2>&1
+	blue_led_off
+	date
+ENDTIME=`date +%s`
+RUNTIMESEC=$((ENDTIME-STARTTIME))
+MIN=$(((RUNTIMESEC)/60))
+SEC=$(((RUNTIMESEC)%60))
+	echo "=============================================================="
+echo "RUNTIME" "$MIN:$SEC"
+	echo "OK!! You can remove the BOOTDISK $DEVICE now!!"
+	exit 0
+fi
+}
+
+bpi_disktoimage() 
+{
+	usage
+if [ -b ${DEVICE} ] ; then
+	echo "Info: Try to write $DEVICE to BOOTDISK $IMGFILE"
+	requires_root
+	echo "=============================================================="
+STARTTIME=`date +%s`
+	date
+#	blue_led_on
+	umount_device
+	bpi_copy_disk
+	(eject $DEVICE) > /dev/null 2>&1
+#	blue_led_off
+	date
+ENDTIME=`date +%s`
+RUNTIMESEC=$((ENDTIME-STARTTIME))
+MIN=$(((RUNTIMESEC)/60))
+SEC=$(((RUNTIMESEC)%60))
+	echo "=============================================================="
+echo "RUNTIME" "$MIN:$SEC"
+	echo "OK!! You can remove the BOOTDISK $DEVICE now!!"
+	exit 0
+fi
+}
+
+update_copymode()
+{
+#null
+	echo SRC=$SRC
+	echo DST=$DST
+	if [ -z ${SRC} ] ; then
+		echo COPYMODE=usage
+		COPYMODE=usage
+		return
+	fi
+#directory
+	if [ -d ${SRC} ] ; then
+		echo COPYMODE=usage
+		COPYMODE=usage
+		return
+	fi
+#block special
+	if [ -b ${SRC} ] ; then
+		echo COPYMODE=disktoimage
+		COPYMODE=disktoimage
+		DEVICE=$SRC
+		IMGFILE=$DST
+		return
+	fi
+#block special
+	if [ -b ${DST} ] ; then
+		echo COPYMODE=imagetodisk
+		COPYMODE=imagetodisk
+		return
+	fi
+	echo COPYMODE=${COPYMODE}
+}
+
+
+bpi_copy_main() 
+{
+#check COPYMODE: imagetodisk / disktoimage / default
+	case ${COPYMODE} in
+	imagetodisk)
+		echo imagetodisk
+		bpi_imagetodisk
+		;;
+	disktoimage)
+		echo disktoimage
+		bpi_disktoimage
+		;;
+	*)
+		echo default
+		usage
+		list_images
+		list_disks
+		exit 0
+		;;
+	esac
+}
+
+#main
+COPYMODE=usage
+update_copymode
+bpi_copy_main 
+

@@ -1,0 +1,294 @@
+#!/bin/bash
+#GPL
+#set -x
+BPILICENSE="GPLv2 or any later version"
+BPICMD="bpi-tools"
+BPICMDVERSION="v1.2.0"
+BPIOPT="$*"
+
+F_ALL="no"
+F_UPDATE="no"
+F_UPGRADE="no"
+F_DOWNLOAD="no"
+F_VERSION="no"
+F_HELP="no"
+F_BOARD="no"
+
+IMGFILE=$1
+BPIFILE="$HOME/.${BPICMD}.lst"
+BPIURL="https://googledrive.com/host/0B6FbwMfcqfFZTUpocHhQbzZJSkk"
+BPIURLNEW=""
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
+
+######################################################
+for IN in "$@"
+do
+  if [[ "$IN" == *"="* ]] ; then
+    P=${IN%%=*}
+    V=${IN##*=}
+    echo "INFO: $P=${V:-(empty)}"
+    eval $P=$V
+  fi
+done
+######################################################
+
+usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi system tools.
+
+Usage: ${BPICMD} [OPTIONS]...
+       ${BPICMD} [ --help | -v | --version ]
+
+Options:
+
+  -A, --all             all for tools
+  -u, --update          update index files
+  -U, --upgrade         donwload & upgrade files
+  -G, --download        donwload files
+  -h, --help            Print usage
+  -v, --version         Print version information and quit
+
+EOF
+#  exit 1
+}
+
+download_index()
+{
+  echo BPIFILE=$BPIFILE
+  echo "Wait for download index file ..."
+#  wget -O $BPIFILE $BPIURL
+  curl -s -L $BPIURL > $BPIFILE
+  echo "OK!!\n"
+}
+
+list_tools()
+{
+  echo
+  echo "bpi files:"
+  awk '{ printf "%-12s\t%s\n", $2, $4 }' $BPIFILE
+}
+
+get_all_versions()
+{
+  echo
+  echo "bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    BPICMDVERSION="old version"
+    if [ -f ${IMGFILE} ] ; then
+      eval `grep "^BPICMDVERSION" $IMGFILE`
+    else
+      BPICMDVERSION="NOT INSTALLED"
+    fi
+    echo "$IMGFILE	$BPICMDVERSION"
+  done
+}
+
+get_all_tools()
+{
+  echo
+  echo "download bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    echo $IN
+    get_bpifile $IN
+    chmod +x $IN
+  done
+}
+
+upgrade_all_tools()
+{
+  echo
+  echo "upgrade bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    echo $IMGFILE
+    if [ -f ${IN} ] ; then
+      cp -a ${IN} ${IMGFILE}
+      chown root:root ${IMGFILE}
+      chmod 755 ${IMGFILE}
+    fi
+  done
+}
+
+get_bpifile()
+{
+  IMGFILE=$1
+  MD5TMP="/tmp/.md5.tmp.$$"
+#  echo "BPIFILE=$BPIFILE"
+#  echo "IMGFILE=$IMGFILE"
+#  echo "MD5TMP=$MD5TMP"
+  LINE=`cat $BPIFILE | grep $IMGFILE`
+  if [ -z "$LINE" ] ; then
+    echo "INFO: $IMGFILE not found!!"
+    return 1
+  fi
+#  echo LINE=$LINE
+  set -- $LINE
+  BPIURL=$3
+  if [ ! -z ${BPIURLNEW} ] ; then
+    BPIURL=${BPIURLNEW}/$2
+  fi
+  echo "$1  $2" > $MD5TMP
+  curl -s -L $BPIURL > $IMGFILE
+  md5sum -c $MD5TMP
+  rm -f $MD5TMP
+  file $IMGFILE | grep "shell script" >/dev/null
+  SHELLCMD=$?
+  if [ $SHELLCMD -eq 0 ] ; then
+    eval `grep "^BPICMDVERSION" $IMGFILE`
+    echo "$IMGFILE: $BPICMDVERSION"
+  fi
+}
+
+requires_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo >&1 "ERROR: This command can only be used by root."
+    exit 1
+  fi
+}
+
+upgrade_bpi_tools()
+{
+  requires_root
+  get_all_tools
+  upgrade_all_tools
+  get_all_versions
+}
+
+bpi_tools_main() 
+{
+  #
+  ## check HELP
+  #
+  if [ "x$F_HELP" == "xyes" ] ; then
+    usage
+  fi
+  #
+  ## check index file
+  #
+  if [ ! -f ${BPIFILE} ] ; then
+    download_index
+  fi
+  #
+  ## check no options
+  #
+  if [ -z ${IMGFILE} ] ; then
+    usage
+    list_tools
+    exit 0
+  fi
+  #
+  ## check 'all'
+  #
+  if [ "x${IMGFILE}" == "xall" ] ; then
+    get_all_tools
+    exit 0
+  fi
+  #
+  ## check 'ALL' option
+  #
+  if [ "x$F_ALL" == "xyes" ] ; then
+    upgrade_bpi_tools
+    exit 0
+  fi
+  #
+  ## check UPDATE
+  #
+  if [ "x$F_UPDATE" == "xyes" ] ; then
+    download_index
+    list_tools
+  fi
+  #
+  ## config DOWNLOAD
+  #
+  if [ "x$F_DOWNLOAD" == "xyes" ] ; then
+    get_all_tools
+  fi
+  #
+  ## config UPGRADE
+  #
+  if [ "x$F_UPGRADE" == "xyes" ] ; then
+    upgrade_bpi_tools
+  fi
+  #
+  ## check VERSION
+  #
+  if [ "x$F_VERSION" == "xyes" ] ; then
+    get_all_versions
+  fi
+  #
+  ## get_bpifile $IMGFILE
+  #
+  for IN in $BPIOPT ; do
+    echo "INFO: Try to get $IN ..."
+    get_bpifile $IN
+  done
+  exit 0
+}
+
+
+#step 0: main/getopt
+BPICMDOPT="AuUGB:vh"
+
+GETOPTEST=`getopt --version`
+case $GETOPTEST in
+getopt*) # GNU getopt
+  BPI_TEMP=`getopt -l all -l update -l download -l upgrade -l board: -l version -l help -- +${BPICMDOPT} "$@"`
+  ;;
+*) # POSIX getopt ?
+  BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
+  ;;
+esac
+
+if test "$?" -ne 0; then
+  usage
+fi
+
+eval set -- "$BPI_TEMP"
+
+BPIDOPTS=""
+
+while test "X$1" != "X--"; do
+  case "$1" in
+    -B|--board)
+       shift
+       F_BOARD="yes"
+       SET_BOARD="$1"
+       echo "SET_BOARD=${SET_BOARD}"
+       ;;
+    -A|--all)
+       F_ALL="yes"
+       echo "F_ALL=${F_ALL}"
+       ;;
+    -u|--update)
+       F_UPDATE="yes"
+       echo "F_UPDATE=${F_UPDATE}"
+       ;;
+    -U|--upgrade)
+       F_UPGRADE="yes"
+       echo "F_UPGRADE=${F_UPGRADE}"
+       ;;
+    -G|--download)
+       F_DOWNLOAD="yes"
+       echo "F_DOWNLOAD=${F_DOWNLOAD}"
+       ;;
+    -v|--version)
+       F_VERSION="yes"
+       echo "F_VERSION=${F_VERSION}"
+       ;;
+    -h|--help)
+       F_HELP="yes"
+       echo "F_HELP=${F_HELP}"
+       ;;
+  esac
+  shift
+done
+
+shift #get rid of the '--'
+BPIOPT=$*
+#echo BPTOPT=$BPIOPT
+
+
+#step 1: main
+bpi_tools_main
+
