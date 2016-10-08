@@ -3,10 +3,12 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.2.2c(github)"
+BPICMDVERSION="v1.3.0(github)"
 
+CONFFILE=""
 BPIMODE=
 NEWBPIMODE=""
+BPIBOARD="bpi-m3"
 
 SRC=""
 DST=""
@@ -28,6 +30,20 @@ UBOOTIMGGZ=BPI_M3_720P.img.gz
 BOOTFILE=BPI-BOOT.tgz
 ROOTFILE=
 
+BPIFILES="bpi-tools.tgz
+3.3.0-BPI-M2-Kernel.tgz
+3.4.39-BPI-M2P-Kernel.tgz
+3.4.39-BPI-M3-Kernel.tgz
+3.4.112-sun8i.tgz
+3.4.112-sun7i.tgz
+3.10.101-pine64-bpi-m64.tgz
+rpi-kernel.tgz
+4.6.5-300.fc24.armv7hl.tgz
+3.10.65-BPI-M2U-Kernel.tgz
+libvdpau_sunxi.tgz
+bt.tgz
+camera.tgz
+brcm.tgz"
 
 #
 # BPIFILE / BPIURL
@@ -70,6 +86,7 @@ Usage: bpi-migrate [OPTIONS]...
 
 Options:
 
+  -c, --config                    config file
   -u, --update                    update index files
   -G, --download                  download files for bpi-migrate
   -r, --root rootfile             user root file for BPI-ROOT (ex. root.tgz)
@@ -82,6 +99,11 @@ Options:
 ex: (prepare env.)
   1. mkdir BPI-ROOT ; cd BPI-ROOT
   2. bpi-migrate -u -G ; #download files for bpi-migrate
+
+ex: (create BPI-M2U BPI-M3 busybox image, auto download files from github)
+  0. sudo su
+  1. bpi-migrate -c bpi-m2u.conf -c busybox.conf
+  2. bpi-migrate -c bpi-m3u.conf -c busybox.conf
 
 ex: (default create BPI-M3 image)
   0. sudo su
@@ -115,6 +137,48 @@ download_index() {
   curl -s -L $BPIURL > $BPIFILE
   echo "OK!!\n"
   F_INDEX=OK
+}
+
+get_conffile() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/conf"
+  CONFDIRS="board os"
+  FILE=$1
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for IN in ${CONFDIRS} ; do
+      U="${UBASE}/${IN}/${FILE}"
+      curl -s -L $U > $FILE
+      eval `grep "^BPICONF" $FILE`
+      if [ "x$FILE" == "x$BPICONF" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+get_bpi_github() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+  FILE=$1
+  DIRS="SD/100MB SD/BPI-BOOT SD/BPI-ROOT rootfs"
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for D in ${DIRS} ; do
+      U="${UBASE}/${D}/${FILE}"
+      #echo $U
+      curl -s -L $U > $FILE
+      grep "Not Found" $FILE 2>&1 >/dev/null
+      SHELLCMD=$?
+      if [ $SHELLCMD -eq 0 ] ; then
+        rm -f $FILE
+      else
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
 }
 
 list_files() {
@@ -416,6 +480,7 @@ write_uboot() {
   echo "# Burning the bootloader #"
   echo "##########################"
   echo
+  get_bpi_github ${UBOOTIMGGZ}
   if [ -f "${UBOOTIMGGZ}" ] ; then
     sudo gunzip -c ${UBOOTIMGGZ} | dd of=${LOOP_DEV} bs=1024 seek=8
   else
@@ -425,45 +490,47 @@ write_uboot() {
 }
 
 write_bpi_boot() {
+#BOOTFILES=""
+BOOTDIR=/mnt
   #df -k | grep "/dev/sdc1" | awk '{ print $6 }'
   echo
   echo "######################"
   echo "# Copying boot files #"
   echo "######################"
   echo
-  sudo mount -t vfat "${LOOP_PART_BOOT}" /mnt
-  if [ -f "${BOOTFILE}" ] ; then
-    sudo tar xf ${BOOTFILE} -C /mnt 2>/dev/null
-  else
-    echo "Warning: CAN NOT OPEN BOOTFILE ${BOOTFILE}"
-  fi
+  sudo mount -t vfat "${LOOP_PART_BOOT}" $BOOTDIR
+  for IN in ${BOOTFILES} ; do
+    get_bpi_github ${IN}
+    if [ -f "${IN}" ] ; then
+      echo tar xf $IN --keep-directory-symlink -C $BOOTDIR
+      tar xf $IN --keep-directory-symlink -C $BOOTDIR 2>/dev/null
+    else
+      if [ -d "${IN}" ] ; then
+        echo tar from dir ${IN}
+        (cd ${IN} ; tar cf - .) | (cd $BOOTDIR ; tar xf -)
+      else
+        echo "Warning: CAN NOT OPEN BOOTFILE file ${IN}"
+      fi
+    fi
+  done
   sudo sync
-  ls -al /mnt
-  sudo umount /mnt
+  ls -al $BOOTDIR
+  sudo umount $BOOTDIR
 }
 
 write_bpi_root() {
-BPIFILES="bpi-tools.tgz
-3.3.0-BPI-M2-Kernel.tgz
-3.4.39-BPI-M2P-Kernel.tgz
-3.4.39-BPI-M3-Kernel.tgz
-3.4.112-sun8i.tgz
-3.4.112-sun7i.tgz
-3.10.101-pine64-bpi-m64.tgz
-rpi-kernel.tgz
-libvdpau_sunxi.tgz
-bt.tgz
-brcm.tgz"
+#BPIFILES=""
 ROOTDIR=/mnt
   echo
   echo "##################"
   echo "# Copying rootfs #"
   echo "##################"
   echo
-  echo "sudo mount -t ext4 "${LOOP_PART_SYS}" /mnt"
-  sudo mount -t ext4 "${LOOP_PART_SYS}" /mnt
+  echo "sudo mount -t ext4 "${LOOP_PART_SYS}" $ROOTDIR"
+  sudo mount -t ext4 "${LOOP_PART_SYS}" $ROOTDIR
   #sudo rm -rf /mnt/*
   for IN in ${ROOTFILE} ${BPIFILES} ; do
+    get_bpi_github ${IN}
     if [ -f "${IN}" ] ; then
       echo tar xvf $IN --keep-directory-symlink -C $ROOTDIR
       tar xf $IN --keep-directory-symlink -C $ROOTDIR
@@ -476,9 +543,10 @@ ROOTDIR=/mnt
       fi
     fi
   done
+
   sudo sync
-  ls -al /mnt
-  sudo umount /mnt
+  ls -al $ROOTDIR
+  sudo umount $ROOTDIR
 }
 
 release_loopdev() {
@@ -719,11 +787,11 @@ bpi_createnewdisk() {
 
 bpi_migratefromroot() {
   if [ -z ${IMGFILE} ] ; then
-    IMGFILE="${ROOTFILE}-bpi-m3.img"
+    IMGFILE="${ROOTFILE}-${BPIBOARD}.img"
     if [ -d ${ROOTFILE} ] ; then
       A=$(date +%F)
       B=$(basename ${ROOTFILE})
-      IMGFILE="${A}_${B}-bpi-m3.img"
+      IMGFILE="${A}_${B}-${BPIBOARD}.img"
     fi
     echo IMGFILE=${IMGFILE}
   fi
@@ -838,15 +906,25 @@ update_bpimode() {
   fi
   #2. check ROOTFILE
   # ROOTFILE
-  if [ -f "${ROOTFILE}" ] ; then
-    BPIMODE=migratefromroot
-    echo BPIMODE=${BPIMODE}
-    return
-  fi
   if [ -d "${ROOTFILE}" ] ; then
     BPIMODE=migratefromroot
     echo BPIMODE=${BPIMODE}
     return
+  fi
+  get_bpi_github ${ROOTFILE}
+  if [ -f "${ROOTFILE}" ] ; then
+    BPIMODE=migratefromroot
+    echo BPIMODE=${BPIMODE}
+    return
+  else
+    if [ ! -z "${ROOTURL}" ] ; then
+      echo "download ROOTFILE $ROOTURL ...\n"
+      curl -L $ROOTURL > $ROOTFILE
+      echo "OK!!\n"
+      BPIMODE=migratefromroot
+      echo BPIMODE=${BPIMODE}
+      return
+    fi
   fi
   #2. check IMGFILE
   # IMGFILE
@@ -928,12 +1006,12 @@ bpi_migrate_main()
 }
 
 #step 0: main/getopt
-BPICMDOPT="r:U:b:i:d:S:D:s:B:uGvh"
+BPICMDOPT="c:r:U:b:i:d:S:D:s:B:uGvh"
 
 GETOPTEST=`getopt --version`
 case $GETOPTEST in
 getopt*) # GNU getopt
-  BPI_TEMP=`getopt -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
+  BPI_TEMP=`getopt -l config: -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
   ;;
 *) # POSIX getopt ?
   BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
@@ -950,6 +1028,19 @@ BPIDOPTS=""
 
 while test "X$1" != "X--"; do
   case "$1" in
+    -c|--config)
+       shift
+       CONFFILE="$1"
+       echo "CONFFILE=${CONFFILE}"
+       #
+       ## run config file
+       #
+       get_conffile ${CONFFILE}
+       if [ -f "${CONFFILE}" ] ; then
+         . ${CONFFILE}
+       fi
+       #
+       ;;
     -r|--root)
        shift
        ROOTFILE="$1"
