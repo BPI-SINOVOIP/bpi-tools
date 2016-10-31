@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.0(github)"
+BPICMDVERSION="v1.3.1(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -27,7 +27,7 @@ LOOP_PART_BOOT="${LOOP_DEV}p1"
 LOOP_PART_SYS="${LOOP_DEV}p2"
 
 UBOOTIMGGZ=BPI_M3_720P.img.gz
-BOOTFILE=BPI-BOOT.tgz
+BOOTFILES=BPI-BOOT.tgz
 ROOTFILE=
 
 BPIFILES="bpi-tools.tgz
@@ -103,7 +103,7 @@ ex: (prepare env.)
 ex: (create BPI-M2U BPI-M3 busybox image, auto download files from github)
   0. sudo su
   1. bpi-migrate -c bpi-m2u.conf -c busybox.conf
-  2. bpi-migrate -c bpi-m3u.conf -c busybox.conf
+  2. bpi-migrate -c bpi-m3.conf -c busybox.conf
 
 ex: (default create BPI-M3 image)
   0. sudo su
@@ -911,7 +911,9 @@ update_bpimode() {
     echo BPIMODE=${BPIMODE}
     return
   fi
-  get_bpi_github ${ROOTFILE}
+  if [ ! -z "${ROOTFILE}" ] ; then
+    get_bpi_github ${ROOTFILE}
+  fi
   if [ -f "${ROOTFILE}" ] ; then
     BPIMODE=migratefromroot
     echo BPIMODE=${BPIMODE}
