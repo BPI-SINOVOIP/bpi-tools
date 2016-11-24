@@ -1,6 +1,6 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.5"
+BPICMDVERSION="v1.0.6"
 DEVICE=$2
 
 IMGFILE=$1
@@ -36,6 +36,11 @@ list_disks()
 
 umount_device()
 {
+	F_RM=`lsblk -o RM $DEVICE | grep 1`
+	if [ -z "$F_RM" ] ; then
+		echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
+		exit 1
+	fi
         echo "umount device: $DEVICE"
         for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"`
         do

@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.1(github)"
+BPICMDVERSION="v1.3.2(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -356,6 +356,11 @@ list_disks() {
 }
 
 umount_device() {
+  F_RM=`lsblk -o RM $DEVICE | grep 1`
+  if [ -z "$F_RM" ] ; then
+    echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
+    exit 1
+  fi
   echo "umount device: ${DEVICE}"
   for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"` ; do
     PART=$IN
