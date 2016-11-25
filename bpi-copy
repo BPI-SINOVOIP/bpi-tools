@@ -1,6 +1,6 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.11"
+BPICMDVERSION="v1.0.11a"
 
 
 SRC=$1
@@ -76,15 +76,22 @@ umount_device()
 {
 	F_RM=`lsblk -o RM $DEVICE | grep 1`
 	if [ -z "$F_RM" ] ; then
-		echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
-		exit 1
+		case $DEVICE in
+		*mmcblk*)
+			echo "INFO: $DEVICE : SD/eMMC !!"
+			;;
+		*)
+			echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
+			exit 1
+			;;
+		esac
 	fi
 	echo "umount device: $DEVICE"
 	for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"`
 	do
 		PART=$IN
 		echo umount $PART
-		umount $PART
+                (umount $PART) 2>/dev/null
 	done
 }
 
