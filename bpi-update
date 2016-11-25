@@ -3,7 +3,8 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.2a(github)"
+BPICMDVERSION="v1.3.3(github)"
+BOARD=$(bpi-hw)
 
 CONFFILE=""
 BPIMODE=
@@ -18,7 +19,7 @@ BOOTSIZE=""
 IMGFILE=""
 DEVICE=""
 
-if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
 
 TMPFILE=/tmp/.${BPICMD}.tmp.$$
 
@@ -481,7 +482,12 @@ BOOTDIR=/mnt
   echo "update $DEV($FSTYPE) with $FILES"
   echo "######################"
   echo
-  sudo mount -t ${FSTYPE} "${DEV}" $BOOTDIR
+  if [[ "x${FSTYPE}" != "xroot" ]] ; then
+    sudo mount -t ${FSTYPE} "${DEV}" $BOOTDIR
+  else
+    BOOTDIR=/
+  echo
+  fi
   for IN in ${FILES} ; do
     get_bpi_github ${IN}
     if [ -f "${IN}" ] ; then
@@ -1018,17 +1024,34 @@ bpi_migrate_main()
   esac
 }
 
-bpi_update_main() 
+bpi_update_on_bpi() 
 {
-  if [ ! -f "${BPIFILE}" ] ; then
-    download_index
-  fi
-  if [[ "x${F_UPDATE}" == "xYES" ]] ; then
-    download_index
-  fi
-  if [[ "x${F_DOWNLOAD}" == "xYES" ]] ; then
-    get_all_files
-  fi
+  umount_device
+  P1=1
+  P2=2
+  case $DEVICE in
+    *mmcblk0) # update running time system : /dev/mmcblk0
+      P1=p1
+      P2=p2
+      update_bpi_files "${DEVICE}${P1}" vfat $BOOTFILES
+      update_bpi_files "${DEVICE}${P2}" root $BPIFILES
+      ;;
+    *mmcblk1) #on board SD/eMMC : /dev/mmcblk
+      P1=p1
+      P2=p2
+      update_bpi_files "${DEVICE}${P1}" vfat $BOOTFILES
+      update_bpi_files "${DEVICE}${P2}" ext4 $BPIFILES
+      ;;
+    *) #UDISK : /dev/sdX
+      update_bpi_files "${DEVICE}${P1}" vfat $BOOTFILES
+      update_bpi_files "${DEVICE}${P2}" ext4 $BPIFILES
+      (eject ${DEVICE}) > /dev/null 2>&1
+      ;;
+  esac
+}
+
+bpi_update_on_x86() 
+{
   umount_device
   BOOTFILES=
   BPIFILES=
@@ -1043,9 +1066,43 @@ bpi_update_main()
         ;;
      esac
   done
-  update_bpi_files "${DEVICE}1" vfat $BOOTFILES
-  update_bpi_files "${DEVICE}2" ext4 $BPIFILES
+  P1=1
+  P2=2
+  case $DEVICE in
+    *mmcblk*)
+      P1=p1
+      P2=p2
+      ;;
+  esac
+  update_bpi_files "${DEVICE}${P1}" vfat $BOOTFILES
+  update_bpi_files "${DEVICE}${P2}" ext4 $BPIFILES
   (eject ${DEVICE}) > /dev/null 2>&1
+}
+
+bpi_update_board() 
+{
+  case ${BOARD} in
+  bpi-x86)
+    bpi_update_on_x86
+    ;;
+  *)
+    bpi_update_on_bpi
+    ;;
+  esac
+}
+
+bpi_update_main() 
+{
+  if [ ! -f "${BPIFILE}" ] ; then
+    download_index
+  fi
+  if [[ "x${F_UPDATE}" == "xYES" ]] ; then
+    download_index
+  fi
+  if [[ "x${F_DOWNLOAD}" == "xYES" ]] ; then
+    get_all_files
+  fi
+  bpi_update_board
 }
 
 #step 0: main/getopt
