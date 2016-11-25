@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.2a(github)"
+BPICMDVERSION="v1.3.2b(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -421,6 +421,10 @@ create_new_disk() {
 }
 
 create_new_image() {
+  if [ ! -z ${USER_NEW_IMAGE} ] ; then
+    ${USER_NEW_IMAGE}
+    return $?
+  fi
   if [ -z ${SIZE} ] ; then
     SIZE=7456
   fi
