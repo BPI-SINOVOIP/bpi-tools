@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.3(github)"
+BPICMDVERSION="v1.3.3a(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -476,35 +476,39 @@ DEV=$1
 FSTYPE=$2
 shift;shift
 FILES=$*
-BOOTDIR=/mnt
+MNTDIR=/mnt
   echo
   echo "######################"
   echo "update $DEV($FSTYPE) with $FILES"
   echo "######################"
   echo
   if [[ "x${FSTYPE}" != "xroot" ]] ; then
-    sudo mount -t ${FSTYPE} "${DEV}" $BOOTDIR
+    sudo mount -t ${FSTYPE} "${DEV}" $MNTDIR
   else
-    BOOTDIR=/
-  echo
+    MNTDIR=/
   fi
+  echo
   for IN in ${FILES} ; do
     get_bpi_github ${IN}
     if [ -f "${IN}" ] ; then
-      echo tar xf $IN --keep-directory-symlink -C $BOOTDIR
-      tar xf $IN --keep-directory-symlink -C $BOOTDIR 2>/dev/null
+      echo tar xf $IN --keep-directory-symlink -C $MNTDIR
+      tar xf $IN --keep-directory-symlink -C $MNTDIR 2>/dev/null
     else
       if [ -d "${IN}" ] ; then
         echo tar from dir ${IN}
-        (cd ${IN} ; tar cf - .) | (cd $BOOTDIR ; tar xf -)
+        (cd ${IN} ; tar cf - .) | (cd $MNTDIR ; tar xf -)
       else
         echo "Warning: CAN NOT OPEN BOOTFILE file ${IN}"
       fi
     fi
   done
   sudo sync
-  ls -al $BOOTDIR
-  sudo umount $BOOTDIR
+  ls -al $MNTDIR
+  if [[ "x${FSTYPE}" != "xroot" ]] ; then
+    sudo umount $MNTDIR
+  else
+    echo "INFO: online system: skip umount $MNTDIR"
+  fi
 }
 
 write_bpi_boot() {
