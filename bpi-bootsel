@@ -1,6 +1,6 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.7(support BPI-R2)"
+BPICMDVERSION="v1.0.7a(support BPI-R2)"
 DEVICE=$2
 
 IMGFILE=$1
@@ -76,9 +76,25 @@ if [ -f ${IMGFILE} ] ; then
 	requires_root
 	umount_device
 	case ${IMGFILE} in
+		*0k*) # seek=0
+		echo seek to 0k
+		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=0 status=noxfer ) > /dev/null 2>&1
+		;;
+		*512b*) # seek=0
+		echo seek to 512 Byte
+		( gunzip -c $IMGFILE | dd of=$DEVICE bs=512 seek=1 status=noxfer ) > /dev/null 2>&1
+		;;
+		*1k*) # seek=1
+		echo seek to 1k
+		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=1 status=noxfer ) > /dev/null 2>&1
+		;;
 		*2k*) # mtk seek=2
 		echo seek to 2k
 		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=2 status=noxfer ) > /dev/null 2>&1
+		;;
+		*8k*) # seek=8
+		echo seek to 8k
+		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=8 status=noxfer ) > /dev/null 2>&1
 		;;
 		*) # default sunxi seek=8
 		echo seek to 8k
