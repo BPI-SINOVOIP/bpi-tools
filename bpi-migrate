@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.2b(github)"
+BPICMDVERSION="v1.3.3(support BPI-R2)"
 
 CONFFILE=""
 BPIMODE=
@@ -27,6 +27,10 @@ LOOP_PART_BOOT="${LOOP_DEV}p1"
 LOOP_PART_SYS="${LOOP_DEV}p2"
 
 UBOOTIMGGZ=BPI_M3_720P.img.gz
+UBOOTFILES="BPI-R2-HEAD440-0k.img.gz
+BPI-R2-HEAD1-512b.img.gz
+"
+
 BOOTFILES=BPI-BOOT.tgz
 ROOTFILE=
 
@@ -490,18 +494,58 @@ mount_image() {
   sudo sync
 }
 
+write_ubootimggz() {
+#
+U_INFILE=$1
+U_OUTFILE=$2
+U_BS=1024
+U_SEEK=8
+#
+  if [ ! -f "${U_INFILE}" ] ; then
+    echo "Warning: CAN NOT OPEN bootloader file ${U_INFILE}"
+    return 1
+  fi
+#
+  case ${U_INFILE} in
+  *0k*)
+    U_BS=1024
+    U_SEEK=0
+    ;;
+  *512b*)
+    U_BS=512
+    U_SEEK=1
+    ;;
+  *1k*)
+    U_BS=1024
+    U_SEEK=1
+    ;;
+  *2k*)
+    U_BS=1024
+    U_SEEK=2
+    ;;
+  *8k*)
+    U_BS=1024
+    U_SEEK=8
+    ;;
+  *) # default sunxi seek=8
+    U_BS=1024
+    U_SEEK=8
+    ;;
+  esac
+  echo "sudo gunzip -c ${U_INFILE} | dd of=${U_OUTFILE} bs=${U_BS} seek=${U_SEEK}"
+  sudo gunzip -c ${U_INFILE} | dd of=${U_OUTFILE} bs=${U_BS} seek=${U_SEEK}
+}
+
 write_uboot() {
   echo
   echo "##########################"
   echo "# Burning the bootloader #"
   echo "##########################"
   echo
-  get_bpi_github ${UBOOTIMGGZ}
-  if [ -f "${UBOOTIMGGZ}" ] ; then
-    sudo gunzip -c ${UBOOTIMGGZ} | dd of=${LOOP_DEV} bs=1024 seek=8
-  else
-    echo "Warning: CAN NOT OPEN bootloader file ${UBOOTIMGGZ}"
-  fi
+  for IN in ${UBOOTFILES} ${UBOOTIMGGZ} ; do
+    get_bpi_github ${IN}
+    write_ubootimggz ${IN} ${LOOP_DEV}
+  done
   sudo sync
 }
 
