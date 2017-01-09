@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-tools"
-BPICMDVERSION="v1.2.0(github)"
+BPICMDVERSION="v1.2.1(github)"
 BPIOPT="$*"
 
 F_ALL="no"
@@ -44,6 +44,7 @@ ${BPICMD}(${BPICMDVERSION}), bananapi system tools.
 
 Usage: ${BPICMD} [OPTIONS]...
        ${BPICMD} [ --help | -v | --version ]
+       ${BPICMD}
 
 Options:
 
@@ -53,6 +54,12 @@ Options:
   -G, --download        donwload files
   -h, --help            Print usage
   -v, --version         Print version information and quit
+
+Info:
+  default without Options will turn on -A for auto install
+
+How to insatll from github:
+curl -sL https://github.com/BPI-SINOVOIP/bpi-tools/raw/master/bpi-tools | sudo -E bash -
 
 EOF
 #  exit 1
@@ -136,7 +143,8 @@ get_bpifile()
   fi
   echo "$1  $2" > $MD5TMP
   curl -s -L $BPIURL > $IMGFILE
-  md5sum -c $MD5TMP
+# skip md5sum check
+#  md5sum -c $MD5TMP
   rm -f $MD5TMP
   file $IMGFILE | grep "shell script" >/dev/null
   SHELLCMD=$?
@@ -177,11 +185,13 @@ bpi_tools_main()
   fi
   #
   ## check no options
+  ## auto turn on -A for auto upgrade, for insatll from github
   #
   if [ -z ${IMGFILE} ] ; then
+    F_ALL="yes"
     usage
-    list_tools
-    exit 0
+#    list_tools
+#    exit 0
   fi
   #
   ## check 'all'
@@ -194,6 +204,7 @@ bpi_tools_main()
   ## check 'ALL' option
   #
   if [ "x$F_ALL" == "xyes" ] ; then
+    download_index
     upgrade_bpi_tools
     exit 0
   fi
