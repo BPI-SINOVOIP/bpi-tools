@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.3(support BPI-R2)"
+BPICMDVERSION="v1.3.3a(support BPI-R2)"
 
 CONFFILE=""
 BPIMODE=
@@ -410,7 +410,8 @@ create_new_disk() {
   sudo parted -s "${LOOP_DEV}" mklabel msdos
   sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary fat32 -- 100MiB 356MiB
   sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary ext2 -- 356MiB ${SIZE}MiB
-  sudo parted -s "${LOOP_DEV}" set 1 boot on
+# support BPI-R2: we disable the boot flag for bypass the BPI-R2 MBR check
+#  sudo parted -s "${LOOP_DEV}" set 1 boot on
   sudo parted -s "${LOOP_DEV}" print
   sudo partprobe "${LOOP_DEV}"
   #
@@ -465,7 +466,8 @@ create_new_image() {
   sudo parted -s "${LOOP_DEV}" mklabel msdos
   sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary fat32 -- ${RAWSIZE}MiB ${OFFSET}MiB
   sudo parted -s "${LOOP_DEV}" unit MiB mkpart primary ext2 -- ${OFFSET}MiB ${SIZE1}MiB
-  sudo parted -s "${LOOP_DEV}" set 1 boot on
+# support BPI-R2: we disable the boot flag for bypass the BPI-R2 MBR check
+#  sudo parted -s "${LOOP_DEV}" set 1 boot on
   sudo parted -s "${LOOP_DEV}" print
   sudo partprobe "${LOOP_DEV}"
   #
