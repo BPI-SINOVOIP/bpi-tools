@@ -1,114 +1,412 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.7a(support BPI-R2)"
+#set -x
+BPILICENSE="GPLv2 or any later version"
+BPICMD="bpi-bootsel"
+BPICMDVERSION="v1.2.0(github)"
+BPIOPT="$*"
+
+BOARD=$(bpi-hw)
+
+CONFFILE=""
+BPIBOARD="bpi-m3"
+
 DEVICE=$2
 
-IMGFILE=$1
+UBOOTIMGGZ=$1
 if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
 
-usage()
-{
-	echo "       bpi-bootsel $BPICMDVERSION"
-	echo "usage: bpi-bootsel"
-	echo "       bpi-bootsel IMGFILE"
-	echo "       bpi-bootsel IMGFILE DEVICE"
-	echo 
+TMPFILE=/tmp/.${BPICMD}.tmp.$$
+
+LOOP_DEV="/dev/loop0"
+LOOP_PART_BOOT="${LOOP_DEV}p1"
+LOOP_PART_SYS="${LOOP_DEV}p2"
+
+#UBOOTFILES="BPI-R2-HEAD440-0k.img.gz
+#BPI-R2-HEAD1-512b.img.gz
+#"
+UBOOTFILES=""
+
+#
+# BPIFILE / BPIURL
+#
+BPIFILE="$HOME/.${BPICMD}.lst"
+#BPI-ROOT.lst
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/BPI-ROOT.lst"
+BPIURLNEW=""
+#
+## URLBASE
+#
+URLBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+#
+## URLCONF
+#
+URLCONF="${URLBASE}/others/for-bpi-tools/conf"
+#
+# update / download
+#
+F_UPDATE=NO
+F_DOWNLOAD=NO
+F_GOOGLE=YES
+
+######################################################
+for IN in "$@"
+do
+  if [[ "$IN" == *"="* ]] ; then
+    P=${IN%%=*}
+    V=${IN##*=}
+    echo "INFO: $P=${V:-(empty)}"
+    eval $P=$V
+  fi
+done
+######################################################
+
+short_usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi boot select tools
+
+Usage: ${BPICMD} [OPTIONS]...
+       ${BPICMD} [ --help | -v | --version ]
+       ${BPICMD} UBOOTIMGGZ
+       ${BPICMD} UBOOTIMGGZ DEVICE
+
+EOF
+  return 0
+}
+
+usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi boot select tools
+
+Usage: ${BPICMD} [OPTIONS]...
+       ${BPICMD} [ --help | -v | --version ]
+       ${BPICMD} UBOOTIMGGZ
+       ${BPICMD} UBOOTIMGGZ DEVICE
+
+Options:
+
+  -c, --config                    config file
+  -U, --uboot UBOOTIMGGZ          uboot UBOOTIMGGZ FILE (*.img.gz)
+  -d, --device device             device
+  -h, --help                      Print usage
+  -v, --version                   Print version information and quit
+
+ex:
+  sudo ${BPICMD}
+  sudo ${BPICMD} /usr/lib/u-boot/bananapi/bpi-m2u/BPI_M2U_720P.img.gz
+  sudo ${BPICMD} BPI_M2U_720P.img.gz
+  sudo ${BPICMD} BPI_M2U_720P.img.gz /dev/mmcblk1
+  sudo ${BPICMD} -c bpi-m2u.conf
+  sudo ${BPICMD} -c bpi-m3.conf URLBASE="ftp://pi:bananapi@127.0.0.1/BPI-files"
+
+EOF
+  exit 1
+}
+
+get_conffile() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/conf"
+  CONFDIRS="board os"
+  FILE=$1
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for IN in ${CONFDIRS} ; do
+      U="${UBASE}/${IN}/${FILE}"
+      curl -s -L $U > $FILE
+      eval `grep "^BPICONF" $FILE`
+      if [ "x$FILE" == "x$BPICONF" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+get_bpi_github() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+  FILE=$1
+  DIRS="SD/100MB SD/BPI-BOOT SD/BPI-ROOT rootfs"
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for D in ${DIRS} ; do
+      U="${UBASE}/${D}/${FILE}"
+      #echo $U
+      curl -s -L $U > $FILE
+      grep "Not Found" $FILE 2>&1 >/dev/null
+      SHELLCMD=$?
+      if [ $SHELLCMD -eq 0 ] ; then
+        rm -f $FILE
+      else
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
 }
 
 list_images()
 {
-	echo "bpi images:"
-	for IN in `find /usr/lib/u-boot/bananapi | grep img.gz`
-	do
-		echo $IN
-	done
+  echo "bpi images:"
+  for IN in `find /usr/lib/u-boot/bananapi | grep img.gz` ; do
+    echo $IN
+  done
 }
 
 list_disks()
 {
-        echo
-        echo "Disks: (lsblk | grep disk)"
-        lsblk | grep disk
-        echo
-        echo "Disks: (fdisk -l | grep Disk | grep bytes)"
-        fdisk -l | grep Disk | grep bytes
+  echo
+  echo "Disks: (lsblk | grep disk)"
+  lsblk | grep disk
+  echo
+  echo "Disks: (fdisk -l | grep Disk | grep bytes)"
+  fdisk -l | grep Disk | grep bytes
 }
 
 umount_device()
 {
-	F_RM=`lsblk -o RM $DEVICE | grep 1`
-	if [ -z "$F_RM" ] ; then
-		case $DEVICE in
-		*mmcblk*)
-			echo "INFO: $DEVICE : SD/eMMC !!"
-			;;
-		*)
-			echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
-			exit 1
-			;;
-		esac
-	fi
-        echo "umount device: $DEVICE"
-        for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"`
-        do
-                PART=$IN
-                echo umount $PART
-                (umount $PART) 2>/dev/null
-        done
+  F_RM=`lsblk -o RM $DEVICE | grep 1`
+  if [ -z "$F_RM" ] ; then
+    case $DEVICE in
+      *mmcblk*)
+      echo "INFO: $DEVICE : SD/eMMC !!"
+      ;;
+    *)
+      echo "INFO: $DEVICE NOT THE removable device!! EXIT!!"
+      exit 1
+      ;;
+    esac
+  fi
+  #
+  echo "umount device: $DEVICE"
+  for IN in `df -k | awk '{ print $1 }' | grep "${DEVICE}"` ; do
+    PART=$IN
+    echo umount $PART
+    (umount $PART) 2>/dev/null
+  done
 }
 
 requires_root() {
-        if [ "$(id -u)" -ne 0 ]; then
-                echo >&1 "ERROR: This command can only be used by root."
-                exit 1
-        fi
+  if [ "$(id -u)" -ne 0 ]; then
+    echo >&1 "ERROR: This command can only be used by root."
+    exit 1
+  fi
 }
 
-if [ -z ${IMGFILE} ] ; then
-	usage
-	list_images
-	list_disks
-	exit 0
+mount_image() {
+  LOOP_DEV=`sudo losetup -f --show ${IMGFILE}`
+  LOOP_PART_BOOT="${LOOP_DEV}p1"
+  LOOP_PART_SYS="${LOOP_DEV}p2"
+  echo
+  echo "#########################"
+  echo " +>${LOOP_DEV} "
+  echo " +->${LOOP_PART_BOOT} "
+  echo " +->${LOOP_PART_SYS} "
+  echo "#########################"
+  echo
+  #
+  sudo sync
+}
+
+write_ubootimggz() {
+#
+U_INFILE=$1
+U_OUTFILE=$2
+U_BS=1024
+U_SEEK=8
+#
+  if [ ! -f "${U_INFILE}" ] ; then
+    echo "Warning: CAN NOT OPEN bootloader file ${U_INFILE}"
+    return 1
+  fi
+#
+  case ${U_INFILE} in
+  *0k*)
+    U_BS=1024
+    U_SEEK=0
+    ;;
+  *512b*)
+    U_BS=512
+    U_SEEK=1
+    ;;
+  *1k*)
+    U_BS=1024
+    U_SEEK=1
+    ;;
+  *2k*)
+    U_BS=1024
+    U_SEEK=2
+    ;;
+  *8k*)
+    U_BS=1024
+    U_SEEK=8
+    ;;
+  *) # default sunxi seek=8
+    U_BS=1024
+    U_SEEK=8
+    ;;
+  esac
+  echo "sudo gunzip -c ${U_INFILE} | dd of=${U_OUTFILE} bs=${U_BS} seek=${U_SEEK}"
+  sudo gunzip -c ${U_INFILE} | dd of=${U_OUTFILE} bs=${U_BS} seek=${U_SEEK}
+}
+
+backup_data()
+{
+  if [ ! -z ${USER_BACKUP} ] ; then
+#    echo "${BPICMD}: do ${USER_BACKUP}() ..."
+    ${USER_BACKUP}
+    return $?
+  fi
+#  echo "${BPICMD}: backup_data():  you can add USER_BACKUP() to .conf"
+}
+
+restore_data()
+{
+  if [ ! -z ${USER_RESTORE} ] ; then
+#    echo "${BPICMD}: do ${USER_RESTORE}() ..."
+    ${USER_RESTORE}
+    return $?
+  fi
+#  echo "${BPICMD}: restore_data():  you can add USER_RESTORE() to .conf"
+}
+
+write_uboot() {
+  echo
+  echo "##########################"
+  echo "# Burning the bootloader #"
+  echo "##########################"
+  echo
+  for IN in ${UBOOTFILES} ${UBOOTIMGGZ} ; do
+    get_bpi_github ${IN}
+    write_ubootimggz ${IN} ${DEVICE}
+  done
+  sudo sync
+}
+
+bpi_bootsel_main()
+{
+  if [ -z ${UBOOTIMGGZ} ] ; then
+    short_usage
+    list_images
+    list_disks
+    exit 0
+  fi
+  #
+#  if [ -f ${UBOOTIMGGZ} ] ; then
+    echo "Warning: Try to write $IMGFILE to BOOTDISK $DEVICE"
+    requires_root
+    umount_device
+    backup_data
+    write_uboot
+    restore_data
+    (eject $DEVICE) > /dev/null 2>&1
+    if [[ $DEVICE == "/dev/mmcblk0" ]]; then
+      echo "OK!! You can reboot the system now!!"
+    else
+      echo "OK!! You can remove the BOOTDISK $DEVICE now!!"
+    fi
+    exit 0
+#  fi
+}
+
+#step 0: main/getopt
+BPICMDOPT="c:r:U:b:i:d:S:D:s:B:uGvh"
+
+GETOPTEST=`getopt --version`
+case $GETOPTEST in
+getopt*) # GNU getopt
+  BPI_TEMP=`getopt -l config: -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
+  ;;
+*) # POSIX getopt ?
+  BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
+  ;;
+esac
+
+if test "$?" -ne 0; then
+  usage
 fi
 
-if [ -f ${IMGFILE} ] ; then
-	echo "Warning: Try to write $IMGFILE to BOOTDISK $DEVICE"
-	requires_root
-	umount_device
-	case ${IMGFILE} in
-		*0k*) # seek=0
-		echo seek to 0k
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=0 status=noxfer ) > /dev/null 2>&1
-		;;
-		*512b*) # seek=0
-		echo seek to 512 Byte
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=512 seek=1 status=noxfer ) > /dev/null 2>&1
-		;;
-		*1k*) # seek=1
-		echo seek to 1k
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=1 status=noxfer ) > /dev/null 2>&1
-		;;
-		*2k*) # mtk seek=2
-		echo seek to 2k
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=2 status=noxfer ) > /dev/null 2>&1
-		;;
-		*8k*) # seek=8
-		echo seek to 8k
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=8 status=noxfer ) > /dev/null 2>&1
-		;;
-		*) # default sunxi seek=8
-		echo seek to 8k
-		( gunzip -c $IMGFILE | dd of=$DEVICE bs=1024 seek=8 status=noxfer ) > /dev/null 2>&1
-		;;
-	esac
-	(eject $DEVICE) > /dev/null 2>&1
-	if [[ $DEVICE == "/dev/mmcblk0" ]]; then
-		echo "OK!! You can reboot the system now!!"
-	else
-		echo "OK!! You can remove the BOOTDISK $DEVICE now!!"
-	fi
-	exit 0
-fi
+eval set -- "$BPI_TEMP"
 
+BPIDOPTS=""
 
+while test "X$1" != "X--"; do
+  case "$1" in
+    -c|--config)
+       shift
+       CONFFILE="$1"
+       echo "CONFFILE=${CONFFILE}"
+       #
+       ## run config file
+       #
+       get_conffile ${CONFFILE}
+       if [ -f "${CONFFILE}" ] ; then
+         . ${CONFFILE}
+       fi
+       #
+       ;;
+    -r|--root)
+       shift
+       ROOTFILE="$1"
+       echo "ROOTFILE=${ROOTFILE}"
+       ;;
+    -U|--uboot)
+       shift
+       UBOOTIMGGZ="$1"
+       echo "UBOOTIMGGZ=${UBOOTIMGGZ}"
+       ;;
+    -b|--boot)
+       shift
+       BOOTFILE="$1"
+       echo "BOOTFILE=${BOOTFILE}"
+       ;;
+    -i|--imgfile)
+       shift
+       IMGFILE="$1"
+       echo "IMGFILE=${IMGFILE}"
+       ;;
+    -d|--device)
+       shift
+       DEVICE="$1"
+       echo "DEVICE=${DEVICE}"
+       ;;
+    -S|--src)
+       shift
+       SRC="$1"
+       echo "SRC=${SRC}"
+       ;;
+    -D|--dst)
+       shift
+       DST="$1"
+       echo "DST=${DST}"
+       ;;
+    -u|--update)
+       echo "update"
+       F_UPDATE=YES
+       ;;
+    -G|--download)
+       echo "download"
+       F_DOWNLOAD=YES
+       ;;
+    -v|--version)
+       short_usage
+       exit 0
+       ;;
+    -h|--help)
+       usage
+       ;;
+  esac
+  shift
+done
+
+shift #get rid of the '--'
+
+#step 1: main
+bpi_bootsel_main 
 
