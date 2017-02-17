@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-bootsel"
-BPICMDVERSION="v1.2.0(github)"
+BPICMDVERSION="v1.2.0a(github)"
 BPIOPT="$*"
 
 BOARD=$(bpi-hw)
@@ -11,10 +11,8 @@ BOARD=$(bpi-hw)
 CONFFILE=""
 BPIBOARD="bpi-m3"
 
-DEVICE=$2
-
-UBOOTIMGGZ=$1
-if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
+DEVICE=""
+UBOOTIMGGZ=""
 
 TMPFILE=/tmp/.${BPICMD}.tmp.$$
 
@@ -406,6 +404,13 @@ while test "X$1" != "X--"; do
 done
 
 shift #get rid of the '--'
+
+NEW_UBOOTIMGGZ=$1
+if [[ $NEW_UBOOTIMGGZ != "" ]]; then UBOOTIMGGZ=${NEW_UBOOTIMGGZ} ; fi
+if [[ $UBOOTIMGGZ == "" ]]; then UBOOTIMGGZ=$1 ; fi
+
+if [[ $DEVICE == "" ]]; then DEVICE=$2 ; fi
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
 
 #step 1: main
 bpi_bootsel_main 
