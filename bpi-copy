@@ -1,27 +1,175 @@
 #!/bin/bash
 #GPL
-BPICMDVERSION="v1.0.11a"
+#set -x
+BPILICENSE="GPLv2 or any later version"
+BPICMD="bpi-copy"
+BPICMDVERSION="v1.2.0(github)"
+BPIOPT="$*"
 
+BOARD=$(bpi-hw)
 
-SRC=$1
-DST=$2
-SIZE=$3
+CONFFILE=""
+BPIBOARD="bpi-m3"
 
-IMGFILE=$SRC
-DEVICE=$DST
-if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+SRC=""
+DST=""
+SIZE=""
 
-TMPFILE=/tmp/.bpi-copy.tmp.$$
+DEVICE=""
+IMGFILE=""
 
-usage()
+TMPFILE=/tmp/.${BPICMD}.tmp.$$
+
+LOOP_DEV="/dev/loop0"
+LOOP_PART_BOOT="${LOOP_DEV}p1"
+LOOP_PART_SYS="${LOOP_DEV}p2"
+
+#
+# BPIFILE / BPIURL
+#
+BPIFILE="$HOME/.${BPICMD}.lst"
+#BPI-ROOT.lst
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/BPI-ROOT.lst"
+BPIURLNEW=""
+#
+## URLBASE
+#
+URLBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+#
+## URLCONF
+#
+URLCONF="${URLBASE}/others/for-bpi-tools/conf"
+#
+# update / download
+#
+F_UPDATE=NO
+F_DOWNLOAD=NO
+F_GOOGLE=YES
+
+######################################################
+for IN in "$@"
+do
+  if [[ "$IN" == *"="* ]] ; then
+    P=${IN%%=*}
+    V=${IN##*=}
+    echo "INFO: $P=${V:-(empty)}"
+    eval $P=$V
+  fi
+done
+######################################################
+
+short_usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi image & disk tools
+
+Usage: ${BPICMD} [OPTIONS]...
+       ${BPICMD} [ --help | -v | --version ]
+       ${BPICMD} IMGFILE
+       ${BPICMD} IMGDIR
+       ${BPICMD} IMGFILE DEVICE
+       ${BPICMD} DEVICE IMGFILE
+
+EOF
+  return 0
+}
+
+usage() {
+cat - >&2 <<EOF
+${BPICMD}(${BPICMDVERSION}), bananapi image & disk tools
+
+Usage: ${BPICMD} [OPTIONS]...
+       ${BPICMD} [ --help | -v | --version ]
+       ${BPICMD} IMGFILE
+       ${BPICMD} IMGDIR
+       ${BPICMD} IMGFILE DEVICE
+       ${BPICMD} DEVICE IMGFILE
+
+Options:
+
+  -c, --config                    config file
+  -i, --imgfile IMGFILE           image file
+  -d, --device device             device
+  -h, --help                      Print usage
+  -v, --version                   Print version information and quit
+
+ex:
+  sudo ${BPICMD}
+  sudo ${BPICMD} xxx.img.zip
+  sudo ${BPICMD} xxx.img.zip /dev/mmcblk1
+  sudo ${BPICMD} xxx.img /dev/sdX
+  sudo ${BPICMD} -c bpi-m2u.conf -i xxx.img.zip -d /dev/sdX
+  sudo ${BPICMD} -c bpi-m3.conf URLBASE="ftp://pi:bananapi@127.0.0.1/BPI-files"
+
+EOF
+  exit 1
+}
+
+get_conffile() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/conf"
+  CONFDIRS="board os"
+  FILE=$1
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for IN in ${CONFDIRS} ; do
+      U="${UBASE}/${IN}/${FILE}"
+      curl -s -L $U > $FILE
+      eval `grep "^BPICONF" $FILE`
+      if [ "x$FILE" == "x$BPICONF" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+get_bpi_github() {
+  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+  FILE=$1
+  DIRS="SD/100MB SD/BPI-BOOT SD/BPI-ROOT rootfs"
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for D in ${DIRS} ; do
+      U="${UBASE}/${D}/${FILE}"
+      #echo $U
+      curl -s -L $U > $FILE
+      grep "Not Found" $FILE 2>&1 >/dev/null
+      SHELLCMD=$?
+      if [ $SHELLCMD -eq 0 ] ; then
+        rm -f $FILE
+      else
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+backup_data()
 {
-	echo "       bpi-copy $BPICMDVERSION"
-	echo "usage: bpi-copy"
-	echo "       bpi-copy IMGFILE"
-	echo "       bpi-copy IMGDIR"
-	echo "       bpi-copy IMGFILE DEVICE"
-	echo "       bpi-copy DEVICE IMGFILE"
-	echo 
+  if [ ! -z ${USER_BACKUP} ] ; then
+    echo "${BPICMD}: do ${USER_BACKUP}() ..."
+    ${USER_BACKUP}
+    return $?
+  fi
+  echo "${BPICMD}: backup_data():  you can add USER_BACKUP() to .conf"
+}
+
+restore_data()
+{
+  if [ ! -z ${USER_RESTORE} ] ; then
+    echo "${BPICMD}: do ${USER_RESTORE}() ..."
+    ${USER_RESTORE}
+    return $?
+  fi
+  echo "${BPICMD}: restore_data():  you can add USER_RESTORE() to .conf"
 }
 
 list_images()
@@ -208,7 +356,7 @@ echo		"dd if=$DEVICE bs=1M count=$SIZE | pv | dd of=$IMGFILE bs=10M status=noxfe
 
 bpi_imagetodisk() 
 {
-	usage
+	short_usage
 if [ -f ${IMGFILE} ] ; then
 	echo "Warning: Try to write $IMGFILE to BOOTDISK $DEVICE"
 	requires_root
@@ -217,7 +365,9 @@ STARTTIME=`date +%s`
 	date
 	blue_led_on
 	umount_device
+	backup_data
 	bpi_copy_image
+	restore_data
 	(eject $DEVICE) > /dev/null 2>&1
 	blue_led_off
 	date
@@ -234,7 +384,7 @@ fi
 
 bpi_disktoimage() 
 {
-	usage
+	short_usage
 if [ -b ${DEVICE} ] ; then
 	echo "Info: Try to write $DEVICE to BOOTDISK $IMGFILE"
 	requires_root
@@ -306,7 +456,7 @@ bpi_copy_main()
 		;;
 	*)
 		echo default
-		usage
+		short_usage
 		list_images
 		list_disks
 		exit 0
@@ -314,7 +464,115 @@ bpi_copy_main()
 	esac
 }
 
-#main
+
+#step 0: main/getopt
+BPICMDOPT="c:r:U:b:i:d:S:D:s:B:uGvh"
+
+GETOPTEST=`getopt --version`
+case $GETOPTEST in
+getopt*) # GNU getopt
+  BPI_TEMP=`getopt -l config: -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
+  ;;
+*) # POSIX getopt ?
+  BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
+  ;;
+esac
+
+if test "$?" -ne 0; then
+  usage
+fi
+
+eval set -- "$BPI_TEMP"
+
+BPIDOPTS=""
+
+while test "X$1" != "X--"; do
+  case "$1" in
+    -c|--config)
+       shift
+       CONFFILE="$1"
+       echo "CONFFILE=${CONFFILE}"
+       #
+       ## run config file
+       #
+       get_conffile ${CONFFILE}
+       if [ -f "${CONFFILE}" ] ; then
+         . ${CONFFILE}
+       fi
+       #
+       ;;
+    -r|--root)
+       shift
+       ROOTFILE="$1"
+       echo "ROOTFILE=${ROOTFILE}"
+       ;;
+    -U|--uboot)
+       shift
+       UBOOTIMGGZ="$1"
+       echo "UBOOTIMGGZ=${UBOOTIMGGZ}"
+       ;;
+    -b|--boot)
+       shift
+       BOOTFILE="$1"
+       echo "BOOTFILE=${BOOTFILE}"
+       ;;
+    -i|--imgfile)
+       shift
+       IMGFILE="$1"
+       echo "IMGFILE=${IMGFILE}"
+       #
+       SRC=${IMGFILE}
+       ;;
+    -d|--device)
+       shift
+       DEVICE="$1"
+       echo "DEVICE=${DEVICE}"
+       #
+       DST=${DEVICE}
+       ;;
+    -S|--src)
+       shift
+       SRC="$1"
+       echo "SRC=${SRC}"
+       ;;
+    -D|--dst)
+       shift
+       DST="$1"
+       echo "DST=${DST}"
+       ;;
+    -u|--update)
+       echo "update"
+       F_UPDATE=YES
+       ;;
+    -G|--download)
+       echo "download"
+       F_DOWNLOAD=YES
+       ;;
+    -v|--version)
+       short_usage
+       exit 0
+       ;;
+    -h|--help)
+       usage
+       ;;
+  esac
+  shift
+done
+
+shift #get rid of the '--'
+
+NEW_SRC=$1
+if [[ $NEW_SRC != "" ]]; then SRC=${NEW_SRC} ; fi
+if [[ $IMGFILE == "" ]]; then IMGFILE=$SRC ; fi
+
+NEW_DST=$2
+if [[ $NEW_DST != "" ]]; then DST=$2 ; fi
+if [[ $DEVICE == "" ]]; then DEVICE=$DST ; fi
+
+if [[ $SIZE == "" ]]; then SIZE=$3 ; fi
+#if [[ $SIZE == "" ]]; then SIZE="7456"; fi ;#DONOT SET for backup all disk
+
+#step 1: main
 COPYMODE=usage
 update_copymode
 bpi_copy_main 
