@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-bootsel"
-BPICMDVERSION="v1.2.0a(github)"
+BPICMDVERSION="v1.2.1(github)"
 BPIOPT="$*"
 
 BOARD=$(bpi-hw)
@@ -108,13 +108,12 @@ EOF
 }
 
 get_conffile() {
-  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/conf"
-  CONFDIRS="board os"
+  CONFDIRS=". board os"
   FILE=$1
   if [ ! -f "${FILE}" ] ; then
     echo "Wait for download $FILE ..."
     for IN in ${CONFDIRS} ; do
-      U="${UBASE}/${IN}/${FILE}"
+      U="${URLCONF}/${IN}/${FILE}"
       curl -s -L $U > $FILE
       eval `grep "^BPICONF" $FILE`
       if [ "x$FILE" == "x$BPICONF" ] ; then
@@ -127,15 +126,19 @@ get_conffile() {
 }
 
 get_bpi_github() {
-  UBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
   FILE=$1
-  DIRS="SD/100MB SD/BPI-BOOT SD/BPI-ROOT rootfs"
+  DIRS=". SD/BPI-ROOT SD/BPI-BOOT SD/100MB rootfs"
   if [ ! -f "${FILE}" ] ; then
     echo "Wait for download $FILE ..."
     for D in ${DIRS} ; do
-      U="${UBASE}/${D}/${FILE}"
+      U="${URLBASE}/${D}/${FILE}"
       #echo $U
       curl -s -L $U > $FILE
+      SHELLCMD=$?
+      if [ ! $SHELLCMD -eq 0 ] ; then
+        rm -f $FILE
+        continue
+      fi
       grep "Not Found" $FILE 2>&1 >/dev/null
       SHELLCMD=$?
       if [ $SHELLCMD -eq 0 ] ; then
