@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-copy"
-BPICMDVERSION="v1.2.0(github)"
+BPICMDVERSION="v1.2.0a(github)"
 BPIOPT="$*"
 
 BOARD=$(bpi-hw)
@@ -155,21 +155,21 @@ get_bpi_github() {
 backup_data()
 {
   if [ ! -z ${USER_BACKUP} ] ; then
-    echo "${BPICMD}: do ${USER_BACKUP}() ..."
+#    echo "${BPICMD}: do ${USER_BACKUP}() ..."
     ${USER_BACKUP}
     return $?
   fi
-  echo "${BPICMD}: backup_data():  you can add USER_BACKUP() to .conf"
+#  echo "${BPICMD}: backup_data():  you can add USER_BACKUP() to .conf"
 }
 
 restore_data()
 {
   if [ ! -z ${USER_RESTORE} ] ; then
-    echo "${BPICMD}: do ${USER_RESTORE}() ..."
+#    echo "${BPICMD}: do ${USER_RESTORE}() ..."
     ${USER_RESTORE}
     return $?
   fi
-  echo "${BPICMD}: restore_data():  you can add USER_RESTORE() to .conf"
+#  echo "${BPICMD}: restore_data():  you can add USER_RESTORE() to .conf"
 }
 
 list_images()
@@ -568,6 +568,7 @@ if [[ $IMGFILE == "" ]]; then IMGFILE=$SRC ; fi
 NEW_DST=$2
 if [[ $NEW_DST != "" ]]; then DST=$2 ; fi
 if [[ $DEVICE == "" ]]; then DEVICE=$DST ; fi
+if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1" ; fi
 
 if [[ $SIZE == "" ]]; then SIZE=$3 ; fi
 #if [[ $SIZE == "" ]]; then SIZE="7456"; fi ;#DONOT SET for backup all disk
