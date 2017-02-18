@@ -3,12 +3,18 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.3a(support BPI-R2)"
+BPICMDVERSION="v1.3.4(github)"
 
 CONFFILE=""
 BPIMODE=
 NEWBPIMODE=""
 BPIBOARD="bpi-m3"
+
+IMGVER=""
+#IMGVER="-demo"
+#IMGVER="-preview"
+#IMGVER="-beta"
+IMGDISK="-sd-emmc"
 
 SRC=""
 DST=""
@@ -97,6 +103,8 @@ Options:
   -b, --boot bootfile             user boot file for BPI-BOOT (ex. boot.tgz)
   -s, --size                      image size(defaut: 7456 MB for eMMC)
   -B, --BOOTSIZE                  BPI-BOOT partition size(default: 256 MB)
+  -I, --IMGDISK                   IMG TYPE ('-sd' '-emmc' '-sd-emmc')
+  -V, --IMGVER                    IMG VERSION ('-demo' '-preview' '-beta') 
   -h, --help                      Print usage
   -v, --version                   Print version information and quit
 
@@ -1070,12 +1078,12 @@ bpi_migrate_main()
 }
 
 #step 0: main/getopt
-BPICMDOPT="c:r:U:b:i:d:S:D:s:B:uGvh"
+BPICMDOPT="c:r:U:b:i:d:S:D:s:B:uGI:V:vh"
 
 GETOPTEST=`getopt --version`
 case $GETOPTEST in
 getopt*) # GNU getopt
-  BPI_TEMP=`getopt -l config: -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l version -l help -- +${BPICMDOPT} "$@"`
+  BPI_TEMP=`getopt -l config: -l root: -l uboot: -l boot: -l imgfile: -l device: -l src: -l dst: -l size: -l update -l download -l BOOTSIZE: -l IMGDISK: -l IMGVER: -l version -l help -- +${BPICMDOPT} "$@"`
   ;;
 *) # POSIX getopt ?
   BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
@@ -1157,6 +1165,16 @@ while test "X$1" != "X--"; do
     -G|--download)
        echo "download"
        F_DOWNLOAD=YES
+       ;;
+    -I|--IMGDISK)
+       shift
+       IMGDISK="$1"
+       echo "IMGDISK=${IMGDISK}"
+       ;;
+    -V|--IMGVER)
+       shift
+       IMGVER="$1"
+       echo "IMGVER=${IMGVER}"
        ;;
     -v|--version)
        usage
