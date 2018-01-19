@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.5(github)"
+BPICMDVERSION="v1.3.6(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -160,7 +160,7 @@ download_index() {
 }
 
 get_conffile() {
-  CONFDIRS=". board os"
+  CONFDIRS=". board os tools"
   FILE=$1
   if [ ! -f "${FILE}" ] ; then
     echo "Wait for download $FILE ..."
