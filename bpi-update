@@ -3,13 +3,15 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.5(github)"
+BPICMDVERSION="v1.3.5a(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
 BPIMODE=
 NEWBPIMODE=""
-BPIBOARD="bpi-m3"
+#BPIBOARD="bpi-m3"
+#support bpi-update -c boardlist.conf
+BPIBOARD=""
 
 SRC=""
 DST=""

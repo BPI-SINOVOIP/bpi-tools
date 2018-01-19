@@ -3,12 +3,14 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.6(github)"
+BPICMDVERSION="v1.3.6a(github)"
 
 CONFFILE=""
 BPIMODE=
 NEWBPIMODE=""
-BPIBOARD="bpi-m3"
+#BPIBOARD="bpi-m3"
+#support bpi-migrate -c boardlist.conf
+BPIBOARD=""
 
 IMGVER=""
 #IMGVER="-demo"
