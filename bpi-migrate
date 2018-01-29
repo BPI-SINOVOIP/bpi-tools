@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.7(github)"
+BPICMDVERSION="v1.3.7a(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -39,7 +39,8 @@ UBOOTFILES="BPI-R2-HEAD440-0k.img.gz
 BPI-R2-HEAD1-512b.img.gz
 "
 
-BOOTFILES=BPI-BOOT.tgz
+#BOOTFILES=BPI-BOOT.tgz
+BOOTFILES=
 ROOTFILE=
 
 BPIFILES="bpi-tools.tgz

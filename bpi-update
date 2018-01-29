@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.6(github)"
+BPICMDVERSION="v1.3.6a(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -30,7 +30,8 @@ LOOP_PART_BOOT="${LOOP_DEV}p1"
 LOOP_PART_SYS="${LOOP_DEV}p2"
 
 UBOOTIMGGZ=BPI_M3_720P.img.gz
-BOOTFILES=BPI-BOOT.tgz
+#BOOTFILES=BPI-BOOT.tgz
+BOOTFILES=
 ROOTFILE=
 
 BPIFILES="bpi-tools.tgz
