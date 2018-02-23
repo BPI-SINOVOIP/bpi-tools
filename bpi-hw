@@ -3,13 +3,15 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-hw"
-BPICMDVERSION="v1.2.8"
+BPICMDVERSION="v1.2.9"
 BPIOPT="$*"
 
 BPIDIR="/var/lib/bananapi"
 BPIHWFILE="$BPIDIR/board.sh"
 NEWBOARD=""
 F_CHANGE="no"
+MODEL=""
+NEWMODEL=
 
 ID="Banana Pi M3"
 BOARD="bpi-m3"
@@ -64,6 +66,60 @@ requires_root() {
   fi
 }
 
+bpi_check_model()
+{
+  # check device-tree
+  if [ ! -f /proc/device-tree/model ] ; then
+    MODEL=
+    NEWMODEL=
+    return
+  fi
+  MODEL=$(cat /proc/device-tree/model)
+  echo MODEL=$MODEL
+  case $MODEL in
+    *BPI-R2*)
+      NEWMODEL="bpi-r2"
+      return
+      ;;
+    *Lamobo\ R1*)
+      NEWMODEL="bpi-r1"
+      return
+      ;;
+    *BPI-M3*)
+      NEWMODEL="bpi-m3"
+      return
+      ;;
+    *BPI-M2-Zero*)
+      NEWMODEL="bpi-m2z"
+      return
+      ;;
+    *BPI-M1-Plus*)
+      NEWMODEL="bpi-m1p"
+      return
+      ;;
+    *BPI-M2-Plus*)
+      NEWMODEL="bpi-m2p"
+      return
+      ;;
+    *BPI-M2-Ultra*)
+      NEWMODEL="bpi-m2u"
+      return
+      ;;
+    *M2\ Magic*)
+      NEWMODEL="bpi-m2m"
+      return
+      ;;
+    *LeMaker*)
+      NEWMODEL="bpi-m1"
+      return
+      ;;
+    *Banana*)
+      NEWMODEL="bpi-m1"
+      return
+      ;;
+  esac
+}
+
 bpi_check_auto()
 {
   NEWBOARD="bpi-m3"
@@ -77,6 +133,11 @@ bpi_check_auto()
     esac
   done
   #BPI
+  bpi_check_model
+  if [ ! -z ${NEWMODEL} ] ; then
+    NEWBOARD=${NEWMODEL}
+    return
+  fi
   # x86
   if (( $(uname -p | grep -ci -m1 'x86') == 1 )); then
     NEWBOARD="bpi-x86"
