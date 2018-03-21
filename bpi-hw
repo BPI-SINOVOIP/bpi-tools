@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-hw"
-BPICMDVERSION="v1.2.9"
+BPICMDVERSION="v1.2.10"
 BPIOPT="$*"
 
 BPIDIR="/var/lib/bananapi"
@@ -111,6 +111,10 @@ bpi_check_model()
       ;;
     *LeMaker*)
       NEWMODEL="bpi-m1"
+      return
+      ;;
+    *BananaPi-M64*)
+      NEWMODEL="bpi-m64"
       return
       ;;
     *Banana*)
