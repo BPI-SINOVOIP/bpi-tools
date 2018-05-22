@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.6a(github)"
+BPICMDVERSION="v1.3.7(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -148,6 +148,7 @@ get_bpi_github() {
   if [ ! -f "${FILE}" ] ; then
     echo "Wait for download $FILE ..."
     for D in ${DIRS} ; do
+      echo -n "."
       U="${URLBASE}/${D}/${FILE}"
       #echo $U
       curl -s -L $U > $FILE
@@ -156,14 +157,23 @@ get_bpi_github() {
         rm -f $FILE
         continue
       fi
-      grep "Not Found" $FILE 2>&1 >/dev/null
-      SHELLCMD=$?
-      if [ $SHELLCMD -eq 0 ] ; then
-        rm -f $FILE
-      else
+      #check file
+      ERRORMSG=("error" "Not Found")
+      for CHECK in "${ERRORMSG[@]}" ; do
+        if [ ! -f "${FILE}" ] ; then
+           break
+        fi
+        #echo "grep ${CHECK} $FILE "
+        grep "${CHECK}" $FILE 2>&1 >/dev/null
+        SHELLCMD=$?
+        if [ $SHELLCMD -eq 0 ] ; then
+          rm -f $FILE
+        fi
+      done
+      if [ -f "${FILE}" ] ; then
         echo $U
         echo "OK!!\n"
-        break 
+        break
       fi
     done
   fi
