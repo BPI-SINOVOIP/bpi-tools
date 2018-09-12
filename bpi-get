@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-get"
-BPICMDVERSION="v1.3.7(github)"
+BPICMDVERSION="v1.3.7a(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -1181,24 +1181,23 @@ bpi_get_main()
   #
   ## show usage: if no file to download 
   #
-  ALLFILES="${BOOTFILES}${BPIFILES}${GETFILES}"
-  if [ -z ${ALLFILES} ] ; then
+  if [ "x${CONFFILE}" == "x" ] && [ "x${GETFILES}" == "x" ] ; then
     usage
     exit 0
   fi
   #
   ## from conf
   #
-  if [ ! -z ${BOOTFILES} ] ; then
+  if [ "x${BOOTFILES}" != "x" ] ; then
     get_bpi_files $BOOTFILES
   fi
-  if [ ! -z ${BPIFILES} ] ; then
+  if [ "x${BPIFILES}" != "x" ] ; then
     get_bpi_files $BPIFILES
   fi
   #
   ## 
   #
-  if [ ! -z ${GETFILES} ] ; then
+  if [ "x${GETFILES}" != "x" ] ; then
     get_bpi_files $GETFILES
   fi
 }
