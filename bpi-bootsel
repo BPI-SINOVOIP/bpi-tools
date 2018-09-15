@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-bootsel"
-BPICMDVERSION="v1.3.3(github)"
+BPICMDVERSION="v1.3.4(github)"
 BPIOPT="$*"
 
 BOARD=$(bpi-hw)
@@ -167,7 +167,7 @@ get_bpi_github() {
 list_images()
 {
   echo "bpi images:"
-  for IN in `find /usr/lib/u-boot/bananapi | grep img.gz` ; do
+  for IN in `find /usr/lib/u-boot/bananapi | sort | grep img.gz` ; do
     echo $IN
   done
 }
