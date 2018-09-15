@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-get"
-BPICMDVERSION="v1.3.7a(github)"
+BPICMDVERSION="v1.3.7b(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -29,8 +29,9 @@ LOOP_DEV="/dev/loop0"
 LOOP_PART_BOOT="${LOOP_DEV}p1"
 LOOP_PART_SYS="${LOOP_DEV}p2"
 
-UBOOTIMGGZ=BPI_M3_720P.img.gz
+#UBOOTIMGGZ=BPI_M3_720P.img.gz
 #BOOTFILES=BPI-BOOT.tgz
+UBOOTIMGGZ=
 BOOTFILES=
 ROOTFILE=
 
@@ -1188,6 +1189,9 @@ bpi_get_main()
   #
   ## from conf
   #
+  if [ "x${UBOOTIMGGZ}" != "x" ] ; then
+    get_bpi_files $UBOOTIMGGZ
+  fi
   if [ "x${BOOTFILES}" != "x" ] ; then
     get_bpi_files $BOOTFILES
   fi
