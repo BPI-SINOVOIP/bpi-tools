@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-migrate"
-BPICMDVERSION="v1.3.8(github)"
+BPICMDVERSION="v1.3.9(github)"
 
 CONFFILE=""
 BPIMODE=
@@ -182,6 +182,11 @@ get_conffile() {
 
 get_bpi_github() {
   FILE=$1
+  # check DIR
+  if [ -d "${FILE}" ] ; then
+     echo "$FILE ... OK!!"
+     return
+  fi
   DIRS=". SD/BPI-ROOT SD/BPI-BOOT SD/100MB rootfs"
   if [ ! -f "${FILE}" ] ; then
     echo "Wait for download $FILE ..."
