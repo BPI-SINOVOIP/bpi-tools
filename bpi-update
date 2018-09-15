@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-update"
-BPICMDVERSION="v1.3.7(github)"
+BPICMDVERSION="v1.3.8(github)"
 BOARD=$(bpi-hw)
 
 CONFFILE=""
@@ -1116,7 +1116,11 @@ bpi_update_board()
 {
   case ${BOARD} in
   bpi-x86)
-    bpi_update_on_x86
+    if [ -f "${CONFFILE}" ] ; then
+      bpi_update_on_bpi
+    else
+      bpi_update_on_x86
+    fi
     ;;
   *)
     bpi_update_on_bpi
