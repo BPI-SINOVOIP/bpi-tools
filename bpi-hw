@@ -3,9 +3,10 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-hw"
-BPICMDVERSION="v1.2.11a"
+BPICMDVERSION="v1.3.1(github)"
 BPIOPT="$*"
 
+CONFFILE=""
 BPIDIR="/var/lib/bananapi"
 BPIHWFILE="$BPIDIR/board.sh"
 NEWBOARD=""
@@ -24,6 +25,30 @@ F_TEMP="no"
 HAVE_BT="no"
 
 if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk1"; fi
+#
+# BPIFILE / BPIURL
+#
+BPIFILE="$HOME/.${BPICMD}.lst"
+#BPI-ROOT.lst
+#
+## Hello from Google,
+## On Aug 31, 2016, we will discontinue serving content via 
+## googledrive.com/host/[id] and the webpages will not be accessible anymore.
+#
+#BPIURL="https://googledrive.com/host/0B_YnvHgh2rwjVE10U3U0Q0NCdWM"
+BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/BPI-ROOT.lst"
+BPIURLNEW=""
+#
+## URLBASE
+#
+URLBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+#
+## URLCONF
+#
+URLCONF="${URLBASE}/others/for-bpi-tools/conf"
+#
+# update / download
+#
 
 ######################################################
 for IN in "$@"
@@ -52,11 +77,151 @@ Options:
                         or  CMD=[rfkill|hciconfig|hcitool|bluetoothctl]
   -O, --osdep MODE      OS DEP. setup, MODE=[yes|list|backup|restore]
   -t, --temp            Print temp.
+  -c, --config          config file
   -h, --help            Print usage
   -v, --version         Print version information and quit
 
 EOF
   exit 1
+}
+
+F_INDEX=
+download_index() {
+  if [ "x${F_INDEX}" == "xOK" ] ; then
+    return
+  fi
+  echo BPIFILE=$BPIFILE
+  echo "Wait for download index file ..."
+  curl -s -L $BPIURL > $BPIFILE
+  echo "OK!!\n"
+  F_INDEX=OK
+}
+
+get_conffile() {
+  CONFDIRS=". board os tools pkg"
+  FILE=$1
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for IN in ${CONFDIRS} ; do
+      U="${URLCONF}/${IN}/${FILE}"
+      curl -s -L $U > $FILE
+      eval `grep "^BPICONF" $FILE`
+      if [ "x$FILE" == "x$BPICONF" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+get_bpi_github() {
+  FILE=$1
+  DIRS=". SD/BPI-ROOT SD/BPI-BOOT SD/100MB rootfs"
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for D in ${DIRS} ; do
+      echo -n "."
+      U="${URLBASE}/${D}/${FILE}"
+      #echo $U
+      curl -s -L $U > $FILE
+      SHELLCMD=$?
+      if [ ! $SHELLCMD -eq 0 ] ; then
+        rm -f $FILE
+        continue
+      fi
+      #check file
+      ERRORMSG=("error" "Not Found")
+      for CHECK in "${ERRORMSG[@]}" ; do
+        if [ ! -f "${FILE}" ] ; then
+           break
+        fi
+        #echo "grep ${CHECK} $FILE "
+        grep "${CHECK}" $FILE 2>&1 >/dev/null
+        SHELLCMD=$?
+        if [ $SHELLCMD -eq 0 ] ; then
+          rm -f $FILE
+        fi
+      done
+      if [ -f "${FILE}" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break
+      fi
+    done
+  fi
+}
+
+list_files() {
+  echo
+  echo "bpi files:"
+  awk '{ printf "%-12s\t%s\n", $2, $4 }' $BPIFILE
+}
+
+get_all_versions() {
+  echo
+  echo "bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    BPICMDVERSION="old version"
+  if [ -f "${IMGFILE}" ] ; then
+    eval `grep "^BPICMDVERSION" $IMGFILE`
+  else
+    BPICMDVERSION="NOT INSTALLED"
+  fi
+  echo "$IMGFILE	$BPICMDVERSION"
+  done
+}
+
+get_all_files() {
+  echo
+  echo "download bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    echo $IN
+    IMGFILE=$IN
+    get_bpifile
+    chmod 644 $IMGFILE
+  done
+}
+
+upgrade_all_files() {
+  echo
+  echo "upgrade bpi files:"
+  for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
+    IMGFILE=/usr/bin/$IN
+    echo $IMGFILE
+    if [ -f "${IN}" ] ; then
+      cp -a ${IN} ${IMGFILE}
+      chown root:root ${IMGFILE}
+      chmod 755 ${IMGFILE}
+    fi
+  done
+}
+
+get_bpifile() {
+  MD5TMP="/tmp/.md5.tmp.$$"
+  #echo "BPIFILE=$BPIFILE"
+  #echo "IMGFILE=$IMGFILE"
+  #echo "MD5TMP=$MD5TMP"
+  LINE=`cat $BPIFILE | grep $IMGFILE`
+  #echo LINE=$LINE
+  set -- $LINE
+  BPIURL=$3
+  if [ ! -z ${BPIURLNEW} ] ; then
+    BPIURL=${BPIURLNEW}/$2
+  fi
+  echo "$1  $2" > $MD5TMP
+  if [ ! -f "${IMGFILE}" ] ; then
+    curl -s -L $BPIURL > $IMGFILE
+  fi
+  md5sum -c $MD5TMP
+  rm -f $MD5TMP
+  file $IMGFILE | grep "shell script" >/dev/null
+  SHELLCMD=$?
+  if [ $SHELLCMD -eq 0 ] ; then
+    eval `grep "^BPICMDVERSION" $IMGFILE`
+    echo "$IMGFILE: $BPICMDVERSION"
+  fi
 }
 
 requires_root() {
@@ -66,8 +231,7 @@ requires_root() {
   fi
 }
 
-bpi_check_model()
-{
+bpi_check_model() {
   # check device-tree
   if [ ! -f /proc/device-tree/model ] ; then
     MODEL=
@@ -132,8 +296,7 @@ bpi_check_model()
   esac
 }
 
-bpi_check_auto()
-{
+bpi_check_auto() {
   NEWBOARD="bpi-m3"
   # parse command line arguments
   for arg in $(cat /proc/cmdline); do
@@ -206,8 +369,7 @@ bpi_check_auto()
   fi
 }
 
-bpi_turn_on_bt()
-{
+bpi_turn_on_bt() {
   requires_root
   echo "info: try to bpi_turn_on_bt"
   if [ -f /usr/local/bin/bpi-bt-patch ] ; then
@@ -218,8 +380,7 @@ bpi_turn_on_bt()
   fi
 }
 
-bpi_hw_bt()
-{
+bpi_hw_bt() {
   CMD=$1
   case ${CMD} in
   none)
@@ -270,8 +431,7 @@ bpi_hw_bt()
   esac
 }
 
-bpi_hw_osdep()
-{
+bpi_hw_osdep() {
   OSDEPFILE="$BPIDIR/osdep.sh"
   if [ -f $OSDEPFILE ] ; then
     . $OSDEPFILE
@@ -329,8 +489,7 @@ bpi_hw_osdep()
   esac
 }
 
-bpi_hw_main() 
-{
+bpi_hw_main() {
   if [ ! -d $BPIDIR ] ; then
     if [ "$(id -u)" -ne 0 ]; then
       echo "INFO: first time, please run sudo $BPICMD"
@@ -412,12 +571,12 @@ bpi_hw_main()
 }
 
 #step 0: main/getopt
-BPICMDOPT="B:AO:b:tvh"
+BPICMDOPT="c:B:AO:b:tvh"
 
 GETOPTEST=`getopt --version`
 case $GETOPTEST in
 getopt*) # GNU getopt
-  BPI_TEMP=`getopt -l board: -l auto -l osdep: -l bt: -l temp -l version -l help -- +${BPICMDOPT} "$@"`
+  BPI_TEMP=`getopt -l config: -l board: -l auto -l osdep: -l bt: -l temp -l version -l help -- +${BPICMDOPT} "$@"`
   ;;
 *) # POSIX getopt ?
   BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
@@ -434,6 +593,19 @@ BPIDOPTS=""
 
 while test "X$1" != "X--"; do
   case "$1" in
+    -c|--config)
+       shift
+       CONFFILE="$1"
+       echo "CONFFILE=${CONFFILE}"
+       #
+       ## run config file
+       #
+       get_conffile ${CONFFILE}
+       if [ -f "${CONFFILE}" ] ; then
+         . ${CONFFILE}
+       fi
+       #
+       ;;
     -B|--board)
        shift
        F_BOARD="yes"
