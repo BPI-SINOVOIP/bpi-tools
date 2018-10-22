@@ -3,9 +3,9 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-tools"
-BPICMDVERSION="v1.2.1(github)"
+BPICMDVERSION="v1.3.1(github)"
 BPIOPT="$*"
-
+CONFFILE=""
 F_ALL="no"
 F_UPDATE="no"
 F_UPGRADE="no"
@@ -25,6 +25,17 @@ BPIFILE="$HOME/.${BPICMD}.lst"
 BPIURL="https://github.com/BPI-SINOVOIP/BPI-files/raw/master/others/for-bpi-tools/bpi-tools.lst"
 BPIURLNEW=""
 if [[ $DEVICE == "" ]]; then DEVICE="/dev/mmcblk0"; fi
+#
+## URLBASE
+#
+URLBASE="https://github.com/BPI-SINOVOIP/BPI-files/raw/master"
+#
+## URLCONF
+#
+URLCONF="${URLBASE}/others/for-bpi-tools/conf"
+#
+# update / download
+#
 
 ######################################################
 for IN in "$@"
@@ -52,6 +63,7 @@ Options:
   -u, --update          update index files
   -U, --upgrade         donwload & upgrade files
   -G, --download        donwload files
+  -c, --config          config file
   -h, --help            Print usage
   -v, --version         Print version information and quit
 
@@ -65,30 +77,49 @@ EOF
 #  exit 1
 }
 
-download_index()
-{
+F_INDEX=
+download_index() {
+  if [ "x${F_INDEX}" == "xOK" ] ; then
+    return
+  fi
   echo BPIFILE=$BPIFILE
   echo "Wait for download index file ..."
-#  wget -O $BPIFILE $BPIURL
   curl -s -L $BPIURL > $BPIFILE
   echo "OK!!\n"
+  F_INDEX=OK
 }
 
-list_tools()
-{
+get_conffile() {
+  CONFDIRS=". board os tools pkg"
+  FILE=$1
+  if [ ! -f "${FILE}" ] ; then
+    echo "Wait for download $FILE ..."
+    for IN in ${CONFDIRS} ; do
+      U="${URLCONF}/${IN}/${FILE}"
+      curl -s -L $U > $FILE
+      eval `grep "^BPICONF" $FILE`
+      if [ "x$FILE" == "x$BPICONF" ] ; then
+        echo $U
+        echo "OK!!\n"
+        break 
+      fi
+    done
+  fi
+}
+
+list_tools() {
   echo
   echo "bpi files:"
   awk '{ printf "%-12s\t%s\n", $2, $4 }' $BPIFILE
 }
 
-get_all_versions()
-{
+get_all_versions() {
   echo
   echo "bpi files:"
   for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
     IMGFILE=/usr/bin/$IN
     BPICMDVERSION="old version"
-    if [ -f ${IMGFILE} ] ; then
+    if [ -f "${IMGFILE}" ] ; then
       eval `grep "^BPICMDVERSION" $IMGFILE`
     else
       BPICMDVERSION="NOT INSTALLED"
@@ -97,8 +128,7 @@ get_all_versions()
   done
 }
 
-get_all_tools()
-{
+get_all_tools() {
   echo
   echo "download bpi files:"
   for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
@@ -108,14 +138,13 @@ get_all_tools()
   done
 }
 
-upgrade_all_tools()
-{
+upgrade_all_tools() {
   echo
   echo "upgrade bpi files:"
   for IN in `cat $BPIFILE | awk '{ print $2 }'` ; do
     IMGFILE=/usr/bin/$IN
     echo $IMGFILE
-    if [ -f ${IN} ] ; then
+    if [ -f "${IN}" ] ; then
       cp -a ${IN} ${IMGFILE}
       chown root:root ${IMGFILE}
       chmod 755 ${IMGFILE}
@@ -123,8 +152,7 @@ upgrade_all_tools()
   done
 }
 
-get_bpifile()
-{
+get_bpifile() {
   IMGFILE=$1
   MD5TMP="/tmp/.md5.tmp.$$"
 #  echo "BPIFILE=$BPIFILE"
@@ -161,16 +189,14 @@ requires_root() {
   fi
 }
 
-upgrade_bpi_tools()
-{
+upgrade_bpi_tools() {
   requires_root
   get_all_tools
   upgrade_all_tools
   get_all_versions
 }
 
-bpi_tools_main() 
-{
+bpi_tools_main() {
   #
   ## check HELP
   #
@@ -245,12 +271,12 @@ bpi_tools_main()
 
 
 #step 0: main/getopt
-BPICMDOPT="AuUGB:vh"
+BPICMDOPT="c:AuUGB:vh"
 
 GETOPTEST=`getopt --version`
 case $GETOPTEST in
 getopt*) # GNU getopt
-  BPI_TEMP=`getopt -l all -l update -l download -l upgrade -l board: -l version -l help -- +${BPICMDOPT} "$@"`
+  BPI_TEMP=`getopt -l config: -l all -l update -l download -l upgrade -l board: -l version -l help -- +${BPICMDOPT} "$@"`
   ;;
 *) # POSIX getopt ?
   BPI_TEMP=`getopt ${BPICMDOPT} "$@"`
@@ -267,6 +293,19 @@ BPIDOPTS=""
 
 while test "X$1" != "X--"; do
   case "$1" in
+    -c|--config)
+       shift
+       CONFFILE="$1"
+       echo "CONFFILE=${CONFFILE}"
+       #
+       ## run config file
+       #
+       get_conffile ${CONFFILE}
+       if [ -f "${CONFFILE}" ] ; then
+         . ${CONFFILE}
+       fi
+       #
+       ;;
     -B|--board)
        shift
        F_BOARD="yes"
