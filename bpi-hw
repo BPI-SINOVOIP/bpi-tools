@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-hw"
-BPICMDVERSION="v1.3.1(github)"
+BPICMDVERSION="v1.3.2(github)"
 BPIOPT="$*"
 
 CONFFILE=""
@@ -241,6 +241,10 @@ bpi_check_model() {
   MODEL=$(cat /proc/device-tree/model)
   echo MODEL=$MODEL
   case $MODEL in
+    *BPI-M4*|*RTD1395*|*Lion*)
+      NEWMODEL="bpi-m4"
+      return
+      ;;
     *BPI-W2*|*RTD1296*)
       NEWMODEL="bpi-w2"
       return
