@@ -1,6 +1,4 @@
 # BPI-tools
-
-Overview
 ------------
 tools for Banana Pi
 
@@ -13,7 +11,7 @@ curl -sL https://github.com/BPI-SINOVOIP/bpi-tools/raw/master/bpi-tools | sudo -
 ```
 
 
-EX bpi-copy:
+EX: bpi-copy
 -----------------------------------------
 Copy data from SD-Card/EMMC to be Images 
 ```
@@ -26,14 +24,14 @@ sudo bpi-copy < xxxxx.img.zip> < device path>
 ```
 
 
-EX bpi-update:
+EX: bpi-update
 -----------------------------------------
 update W2 new kernel version 
 ```
 sudo bpi-update -c bpi-w2.conf
 ```
 
-EX bpi-bootsel:
+EX: bpi-bootsel
 -----------------------------------------
 M3 imgae is switchable to M2_Plus
 ```
