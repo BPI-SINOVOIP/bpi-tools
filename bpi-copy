@@ -3,7 +3,7 @@
 #set -x
 BPILICENSE="GPLv2 or any later version"
 BPICMD="bpi-copy"
-BPICMDVERSION="v1.3.3(github)"
+BPICMDVERSION="v1.3.4(github)"
 BPIOPT="$*"
 
 BOARD=$(bpi-hw)
@@ -291,7 +291,7 @@ bpi_copy_image()
 		echo zip
 		unzip -p $IMGFILE | pv | dd of=$DEVICE bs=10M status=noxfer
 		;;
-	*.img)
+	*.img|*.iso)
 		echo img
 #		(dd if=$IMGFILE of=$DEVICE bs=10M status=noxfer ) > /dev/null 2>&1
 		dd if=$IMGFILE bs=10M | pv | dd of=$DEVICE bs=10M status=noxfer
