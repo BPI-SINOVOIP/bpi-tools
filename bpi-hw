@@ -281,7 +281,7 @@ bpi_check_model() {
       NEWMODEL="bpi-m2p"
       return
       ;;
-    *BPI-M2-Ultra*|*M2 Berry*)
+    *BPI-M2-Ultra*|*M2\ Berry*)
       NEWMODEL="bpi-m2u"
       return
       ;;
